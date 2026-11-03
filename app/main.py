@@ -1,12 +1,16 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 import app.models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import engine, init_db
+
+WEB_INDEX_PATH = Path(__file__).resolve().parent / "web" / "index.html"
 
 
 @asynccontextmanager
@@ -29,6 +33,14 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
+
+    @application.get(
+        "/",
+        response_class=HTMLResponse,
+        include_in_schema=False,
+    )
+    async def web_dashboard() -> HTMLResponse:
+        return HTMLResponse(content=WEB_INDEX_PATH.read_text(encoding="utf-8"))
 
     @application.get("/health", tags=["Health"], summary="Health check endpoint")
     async def health_check() -> dict[str, str]:
