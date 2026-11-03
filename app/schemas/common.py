@@ -21,3 +21,4 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page: int = Field(..., ge=1, description="Current page number (1-indexed)")
     size: int = Field(..., ge=1, description="Page size")
     pages: int = Field(..., ge=0, description="Total number of pages")
+

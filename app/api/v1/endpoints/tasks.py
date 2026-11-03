@@ -29,16 +29,26 @@ async def list_tasks(
         TaskPriority | None,
         Query(alias="priority", description="Filter tasks by priority"),
     ] = None,
+    project_id: Annotated[
+        int | None,
+        Query(ge=1, description="Filter tasks by project ID"),
+    ] = None,
+    assignee_id: Annotated[
+        int | None,
+        Query(ge=1, description="Filter tasks by assignee user ID"),
+    ] = None,
     search: Annotated[
         str | None,
         Query(max_length=100, description="Search keyword in title or description"),
     ] = None,
 ) -> PaginatedResponse[TaskResponse]:
-    return service.list_tasks(
+    return await service.list_tasks(
         page=pagination.page,
         size=pagination.size,
         status_filter=status_filter,
         priority_filter=priority_filter,
+        project_id=project_id,
+        assignee_id=assignee_id,
         search=search,
     )
 
@@ -52,7 +62,7 @@ async def get_task(
     service: TaskServiceDep,
     task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
 ) -> TaskResponse:
-    return service.get_task(task_id)
+    return await service.get_task(task_id)
 
 
 @router.post(
@@ -65,7 +75,7 @@ async def create_task(
     payload: TaskCreate,
     service: TaskServiceDep,
 ) -> TaskResponse:
-    return service.create_task(payload)
+    return await service.create_task(payload)
 
 
 @router.put(
@@ -83,8 +93,10 @@ async def replace_task(
         description=payload.description,
         status=payload.status,
         priority=payload.priority,
+        project_id=payload.project_id,
+        assignee_id=payload.assignee_id,
     )
-    return service.update_task(task_id, update_payload)
+    return await service.update_task(task_id, update_payload)
 
 
 @router.patch(
@@ -97,7 +109,7 @@ async def update_task(
     service: TaskServiceDep,
     task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
 ) -> TaskResponse:
-    return service.update_task(task_id, payload)
+    return await service.update_task(task_id, payload)
 
 
 @router.delete(
@@ -110,5 +122,5 @@ async def delete_task(
     service: TaskServiceDep,
     task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
 ) -> MessageResponse:
-    service.delete_task(task_id)
+    await service.delete_task(task_id)
     return MessageResponse(message=f"Task {task_id} deleted successfully")

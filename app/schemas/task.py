@@ -28,13 +28,13 @@ class TaskBase(BaseModel):
         min_length=3,
         max_length=200,
         description="Short title of the task",
-        examples=["Implement FastAPI Layered Architecture"],
+        examples=["Implement SQLAlchemy 2.x Async Repository"],
     )
     description: str | None = Field(
         default=None,
         max_length=2000,
         description="Detailed task description",
-        examples=["Build routers, services, repositories, and Pydantic v2 schemas"],
+        examples=["Build generic BaseRepository[T] with async CRUD and pagination"],
     )
     status: TaskStatus = Field(
         default=TaskStatus.TODO,
@@ -43,6 +43,16 @@ class TaskBase(BaseModel):
     priority: TaskPriority = Field(
         default=TaskPriority.MEDIUM,
         description="Task priority level",
+    )
+    project_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional ID of the project this task belongs to",
+    )
+    assignee_id: int | None = Field(
+        default=None,
+        ge=1,
+        description="Optional ID of the user assigned to this task",
     )
 
     @field_validator("title")
@@ -65,6 +75,8 @@ class TaskUpdate(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
+    project_id: int | None = Field(default=None, ge=1)
+    assignee_id: int | None = Field(default=None, ge=1)
 
     @field_validator("title")
     @classmethod
