@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-import app.models  # noqa: F401 - register ORM models on metadata
+import app.models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import engine, init_db
@@ -18,13 +18,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application instance."""
+    """Create and configure the TaskHub FastAPI application instance."""
     application = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,
         description=(
-            "Sample Task & Project Management API with SQLAlchemy 2.x Async, "
-            "Generic BaseRepository[T], and Alembic Migrations"
+            "TaskHub — Hệ thống quản lý công việc (Task Management API) built with "
+            "Layered Architecture, SQLAlchemy 2.x Async, Generic BaseRepository[T], and Alembic"
         ),
         lifespan=lifespan,
     )
@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
 
     @application.get("/health", tags=["Health"], summary="Health check endpoint")
     async def health_check() -> dict[str, str]:
-        return {"status": "ok", "version": settings.APP_VERSION}
+        return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
 
     return application
 

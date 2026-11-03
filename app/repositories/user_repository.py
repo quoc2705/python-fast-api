@@ -20,7 +20,7 @@ class UserRepository(BaseRepository[User]):
         self,
         *,
         page: int = 1,
-        size: int = 10,
+        limit: int = 10,
         is_active: bool | None = None,
         search: str | None = None,
     ) -> tuple[list[User], int, int]:
@@ -35,5 +35,4 @@ class UserRepository(BaseRepository[User]):
                     User.full_name.ilike(pattern),
                 )
             )
-        return await self.get_multi_paginated(page=page, size=size, filters=filters)
-
+        return await self.get_multi_paginated(page=page, limit=limit, filters=filters)

@@ -27,11 +27,11 @@ class BaseRepository(Generic[ModelType]):
         self,
         *,
         page: int = 1,
-        size: int = 10,
+        limit: int = 10,
         filters: Sequence[ColumnElement[bool]] | None = None,
         order_by: Any = None,
     ) -> tuple[list[ModelType], int, int]:
-        """Fetch paginated records and return (items, total_count, total_pages)."""
+        """Fetch paginated records using (page, limit) and return (items, total, pages)."""
         stmt = select(self.model)
         count_stmt = select(func.count()).select_from(self.model)
 
@@ -47,10 +47,10 @@ class BaseRepository(Generic[ModelType]):
 
         total_result = await self.session.execute(count_stmt)
         total = int(total_result.scalar_one() or 0)
-        pages = ceil(total / size) if total > 0 else 0
+        pages = ceil(total / limit) if total > 0 else 0
 
-        offset = (page - 1) * size
-        stmt = stmt.offset(offset).limit(size)
+        offset = (page - 1) * limit
+        stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         items = list(result.scalars().all())
 
@@ -78,4 +78,3 @@ class BaseRepository(Generic[ModelType]):
         """Delete an existing model instance."""
         await self.session.delete(db_obj)
         await self.session.commit()
-

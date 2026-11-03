@@ -10,11 +10,11 @@ def utc_now() -> datetime:
 
 
 class Base(DeclarativeBase):
-    """SQLAlchemy 2.x Declarative Base class for all models."""
+    """SQLAlchemy 2.x Declarative Base class for all TaskHub ORM models."""
 
 
-class TimestampMixin:
-    """Reusable mixin providing created_at and updated_at audit columns."""
+class CreatedAtMixin:
+    """Reusable mixin providing created_at timestamp column."""
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -22,6 +22,11 @@ class TimestampMixin:
         server_default=func.now(),
         nullable=False,
     )
+
+
+class TimestampMixin(CreatedAtMixin):
+    """Reusable mixin providing created_at and updated_at audit columns."""
+
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=utc_now,
@@ -29,4 +34,3 @@ class TimestampMixin:
         server_default=func.now(),
         nullable=False,
     )
-

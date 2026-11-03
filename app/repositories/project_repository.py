@@ -2,6 +2,7 @@ from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.enums import ProjectStatus
 from app.models.project import Project
 from app.repositories.base import BaseRepository
 
@@ -16,7 +17,10 @@ class ProjectRepository(BaseRepository[Project]):
         stmt = (
             select(Project)
             .where(Project.id == project_id)
-            .options(selectinload(Project.owner), selectinload(Project.tasks))
+            .options(
+                selectinload(Project.tasks),
+                selectinload(Project.labels),
+            )
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
@@ -25,13 +29,16 @@ class ProjectRepository(BaseRepository[Project]):
         self,
         *,
         page: int = 1,
-        size: int = 10,
-        owner_id: int | None = None,
+        limit: int = 10,
+        workspace_id: int | None = None,
+        status: ProjectStatus | None = None,
         search: str | None = None,
     ) -> tuple[list[Project], int, int]:
         filters: list[ColumnElement[bool]] = []
-        if owner_id is not None:
-            filters.append(Project.owner_id == owner_id)
+        if workspace_id is not None:
+            filters.append(Project.workspace_id == workspace_id)
+        if status is not None:
+            filters.append(Project.status == status)
         if search:
             pattern = f"%{search.strip()}%"
             filters.append(
@@ -40,5 +47,4 @@ class ProjectRepository(BaseRepository[Project]):
                     Project.description.ilike(pattern),
                 )
             )
-        return await self.get_multi_paginated(page=page, size=size, filters=filters)
-
+        return await self.get_multi_paginated(page=page, limit=limit, filters=filters)

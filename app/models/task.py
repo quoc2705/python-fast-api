@@ -1,22 +1,35 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SqlEnum, ForeignKey, String, Text
+from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin
-from app.schemas.task import TaskPriority, TaskStatus
+from app.db.base import Base, CreatedAtMixin
+from app.models.enums import TaskPriority, TaskStatus
 
 if TYPE_CHECKING:
+    from app.models.comment import Comment
+    from app.models.label import Label
     from app.models.project import Project
     from app.models.user import User
 
 
-class Task(Base, TimestampMixin):
-    """Task ORM model linked optionally to a Project and an Assignee (User)."""
+class Task(Base, CreatedAtMixin):
+    """5. tasks: id, project_id, assignee_id, title, description, status, priority, due_date, created_by, created_at."""
 
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    assignee_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"),
+        index=True,
+        nullable=True,
+    )
     title: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(
@@ -33,18 +46,17 @@ class Task(Base, TimestampMixin):
         index=True,
         nullable=False,
     )
-    project_id: Mapped[int | None] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        index=True,
+    due_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
         nullable=True,
     )
-    assignee_id: Mapped[int | None] = mapped_column(
+    created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         index=True,
         nullable=True,
     )
 
-    project: Mapped["Project | None"] = relationship(
+    project: Mapped["Project"] = relationship(
         "Project",
         back_populates="tasks",
         lazy="selectin",
@@ -52,6 +64,24 @@ class Task(Base, TimestampMixin):
     assignee: Mapped["User | None"] = relationship(
         "User",
         back_populates="assigned_tasks",
+        foreign_keys=[assignee_id],
         lazy="selectin",
     )
-
+    creator: Mapped["User | None"] = relationship(
+        "User",
+        back_populates="created_tasks",
+        foreign_keys=[created_by],
+        lazy="selectin",
+    )
+    labels: Mapped[list["Label"]] = relationship(
+        "Label",
+        secondary="task_labels",
+        back_populates="tasks",
+        lazy="selectin",
+    )
+    comments: Mapped[list["Comment"]] = relationship(
+        "Comment",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )

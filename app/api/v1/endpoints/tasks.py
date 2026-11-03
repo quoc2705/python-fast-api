@@ -3,8 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Path, Query, status
 
 from app.api.deps import PaginationParams, get_task_service
+from app.models.enums import TaskPriority, TaskStatus
+from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import MessageResponse, PaginatedResponse
-from app.schemas.task import TaskCreate, TaskPriority, TaskResponse, TaskStatus, TaskUpdate
+from app.schemas.task import TaskDetailResponse, TaskResponse, TaskUpdate
 from app.services.task_service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
@@ -16,11 +18,15 @@ PaginationDep = Annotated[PaginationParams, Depends()]
 @router.get(
     "",
     response_model=PaginatedResponse[TaskResponse],
-    summary="List tasks with filtering and pagination",
+    summary="List tasks across projects with filtering and pagination (page + limit)",
 )
 async def list_tasks(
     service: TaskServiceDep,
     pagination: PaginationDep,
+    project_id: Annotated[
+        int | None,
+        Query(ge=1, description="Filter tasks by project ID"),
+    ] = None,
     status_filter: Annotated[
         TaskStatus | None,
         Query(alias="status", description="Filter tasks by status"),
@@ -28,10 +34,6 @@ async def list_tasks(
     priority_filter: Annotated[
         TaskPriority | None,
         Query(alias="priority", description="Filter tasks by priority"),
-    ] = None,
-    project_id: Annotated[
-        int | None,
-        Query(ge=1, description="Filter tasks by project ID"),
     ] = None,
     assignee_id: Annotated[
         int | None,
@@ -42,12 +44,12 @@ async def list_tasks(
         Query(max_length=100, description="Search keyword in title or description"),
     ] = None,
 ) -> PaginatedResponse[TaskResponse]:
-    return await service.list_tasks(
+    return await service.list_project_tasks(
+        project_id=project_id,
         page=pagination.page,
-        size=pagination.size,
+        limit=pagination.limit,
         status_filter=status_filter,
         priority_filter=priority_filter,
-        project_id=project_id,
         assignee_id=assignee_id,
         search=search,
     )
@@ -55,54 +57,20 @@ async def list_tasks(
 
 @router.get(
     "/{task_id}",
-    response_model=TaskResponse,
-    summary="Get a task by ID",
+    response_model=TaskDetailResponse,
+    summary="Get a task by ID including labels and comments",
 )
 async def get_task(
     service: TaskServiceDep,
     task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
-) -> TaskResponse:
+) -> TaskDetailResponse:
     return await service.get_task(task_id)
-
-
-@router.post(
-    "",
-    response_model=TaskResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Create a new task",
-)
-async def create_task(
-    payload: TaskCreate,
-    service: TaskServiceDep,
-) -> TaskResponse:
-    return await service.create_task(payload)
-
-
-@router.put(
-    "/{task_id}",
-    response_model=TaskResponse,
-    summary="Replace a task by ID",
-)
-async def replace_task(
-    payload: TaskCreate,
-    service: TaskServiceDep,
-    task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
-) -> TaskResponse:
-    update_payload = TaskUpdate(
-        title=payload.title,
-        description=payload.description,
-        status=payload.status,
-        priority=payload.priority,
-        project_id=payload.project_id,
-        assignee_id=payload.assignee_id,
-    )
-    return await service.update_task(task_id, update_payload)
 
 
 @router.patch(
     "/{task_id}",
     response_model=TaskResponse,
-    summary="Partially update a task by ID",
+    summary="Partially update a task (status, priority, assignee, due_date, etc.)",
 )
 async def update_task(
     payload: TaskUpdate,
@@ -124,3 +92,60 @@ async def delete_task(
 ) -> MessageResponse:
     await service.delete_task(task_id)
     return MessageResponse(message=f"Task {task_id} deleted successfully")
+
+
+@router.post(
+    "/{task_id}/labels/{label_id}",
+    response_model=TaskDetailResponse,
+    summary="Attach a project label to a task",
+)
+async def attach_label_to_task(
+    service: TaskServiceDep,
+    task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
+    label_id: Annotated[int, Path(ge=1, description="Label unique ID")],
+) -> TaskDetailResponse:
+    return await service.attach_label(task_id, label_id)
+
+
+@router.delete(
+    "/{task_id}/labels/{label_id}",
+    response_model=MessageResponse,
+    summary="Detach a label from a task",
+)
+async def detach_label_from_task(
+    service: TaskServiceDep,
+    task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
+    label_id: Annotated[int, Path(ge=1, description="Label unique ID")],
+) -> MessageResponse:
+    await service.detach_label(task_id, label_id)
+    return MessageResponse(
+        message=f"Label {label_id} detached from task {task_id} successfully"
+    )
+
+
+@router.post(
+    "/{task_id}/comments",
+    response_model=CommentResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Add a comment on a task",
+)
+async def add_comment_to_task(
+    payload: CommentCreate,
+    service: TaskServiceDep,
+    task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
+) -> CommentResponse:
+    return await service.add_comment(task_id, payload)
+
+
+@router.delete(
+    "/{task_id}/comments/{comment_id}",
+    response_model=MessageResponse,
+    summary="Delete a comment from a task",
+)
+async def delete_comment_from_task(
+    service: TaskServiceDep,
+    task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
+    comment_id: Annotated[int, Path(ge=1, description="Comment unique ID")],
+) -> MessageResponse:
+    await service.delete_comment(task_id, comment_id)
+    return MessageResponse(message=f"Comment {comment_id} deleted successfully")

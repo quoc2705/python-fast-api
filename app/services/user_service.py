@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi import HTTPException, status
 
 from app.repositories.user_repository import UserRepository
@@ -5,8 +7,13 @@ from app.schemas.common import PaginatedResponse
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
 
 
+def hash_password_placeholder(raw_password: str) -> str:
+    """Deterministic password hash helper (upgraded to passlib/bcrypt in Session 3 Auth)."""
+    return f"sha256${hashlib.sha256(raw_password.encode('utf-8')).hexdigest()}"
+
+
 class UserService:
-    """Business logic layer for managing users."""
+    """Business logic layer for managing TaskHub users."""
 
     def __init__(self, repository: UserRepository) -> None:
         self._repository = repository
@@ -15,13 +22,13 @@ class UserService:
         self,
         *,
         page: int = 1,
-        size: int = 10,
+        limit: int = 10,
         is_active: bool | None = None,
         search: str | None = None,
     ) -> PaginatedResponse[UserResponse]:
         items, total, pages = await self._repository.list_users(
             page=page,
-            size=size,
+            limit=limit,
             is_active=is_active,
             search=search,
         )
@@ -29,7 +36,7 @@ class UserService:
             items=[UserResponse.model_validate(item) for item in items],
             total=total,
             page=page,
-            size=size,
+            limit=limit,
             pages=pages,
         )
 
@@ -49,7 +56,9 @@ class UserService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"User with email '{payload.email}' already exists",
             )
-        user = await self._repository.create(payload.model_dump())
+        data = payload.model_dump(exclude={"password"})
+        data["hashed_password"] = hash_password_placeholder(payload.password)
+        user = await self._repository.create(data)
         return UserResponse.model_validate(user)
 
     async def update_user(self, user_id: int, payload: UserUpdate) -> UserResponse:
@@ -78,4 +87,3 @@ class UserService:
                 detail=f"User with id={user_id} not found",
             )
         await self._repository.delete(user)
-

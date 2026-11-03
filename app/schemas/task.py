@@ -1,58 +1,48 @@
 from datetime import datetime
-from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-
-class TaskStatus(str, Enum):
-    """Supported statuses for a task."""
-
-    TODO = "todo"
-    IN_PROGRESS = "in_progress"
-    DONE = "done"
-
-
-class TaskPriority(str, Enum):
-    """Supported priority levels for a task."""
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
+from app.models.enums import TaskPriority, TaskStatus
+from app.schemas.comment import CommentResponse
+from app.schemas.label import LabelResponse
 
 
 class TaskBase(BaseModel):
-    """Shared properties for Task schemas."""
+    """Shared properties for TaskHub Task schemas."""
 
     title: str = Field(
         ...,
         min_length=3,
         max_length=200,
         description="Short title of the task",
-        examples=["Implement SQLAlchemy 2.x Async Repository"],
+        examples=["Implement TaskHub SQLAlchemy 2.x Async Schema"],
     )
     description: str | None = Field(
         default=None,
         max_length=2000,
         description="Detailed task description",
-        examples=["Build generic BaseRepository[T] with async CRUD and pagination"],
     )
     status: TaskStatus = Field(
         default=TaskStatus.TODO,
-        description="Current status of the task",
+        description="Current workflow status (TODO/IN_PROGRESS/IN_REVIEW/DONE)",
     )
     priority: TaskPriority = Field(
         default=TaskPriority.MEDIUM,
-        description="Task priority level",
-    )
-    project_id: int | None = Field(
-        default=None,
-        ge=1,
-        description="Optional ID of the project this task belongs to",
+        description="Priority level (LOW/MEDIUM/HIGH/URGENT)",
     )
     assignee_id: int | None = Field(
         default=None,
         ge=1,
         description="Optional ID of the user assigned to this task",
+    )
+    due_date: datetime | None = Field(
+        default=None,
+        description="Optional due date for completing the task",
+    )
+    created_by: int | None = Field(
+        default=None,
+        ge=1,
+        description="ID of the user who created the task",
     )
 
     @field_validator("title")
@@ -65,18 +55,18 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    """Schema for creating a new task."""
+    """Schema for creating a new task inside a project."""
 
 
 class TaskUpdate(BaseModel):
-    """Schema for updating an existing task (partial or full)."""
+    """Schema for partially updating an existing task."""
 
     title: str | None = Field(default=None, min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
-    project_id: int | None = Field(default=None, ge=1)
     assignee_id: int | None = Field(default=None, ge=1)
+    due_date: datetime | None = None
 
     @field_validator("title")
     @classmethod
@@ -94,6 +84,13 @@ class TaskResponse(TaskBase):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int = Field(..., description="Unique identifier of the task")
-    created_at: datetime = Field(..., description="UTC timestamp when task was created")
-    updated_at: datetime = Field(..., description="UTC timestamp when task was last updated")
+    id: int
+    project_id: int
+    created_at: datetime
+    labels: list[LabelResponse] = Field(default_factory=list)
+
+
+class TaskDetailResponse(TaskResponse):
+    """Schema for returning a task with its comments and labels."""
+
+    comments: list[CommentResponse] = Field(default_factory=list)

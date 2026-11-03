@@ -4,9 +4,9 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Settings:
-    """Application settings for Session 2 (Database & SQLAlchemy 2.x Async)."""
+    """Application settings for TaskHub (Session 1 & Session 2)."""
 
-    APP_NAME: str = "Task Management API"
+    APP_NAME: str = "TaskHub — Task Management API"
     APP_VERSION: str = "0.2.0"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True

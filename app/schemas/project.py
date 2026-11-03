@@ -2,8 +2,9 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.models.enums import ProjectStatus
+from app.schemas.label import LabelResponse
 from app.schemas.task import TaskResponse
-from app.schemas.user import UserResponse
 
 
 class ProjectBase(BaseModel):
@@ -14,14 +15,17 @@ class ProjectBase(BaseModel):
         min_length=3,
         max_length=200,
         description="Project name",
-        examples=["FastAPI Training Platform"],
+        examples=["TaskHub Core Backend"],
     )
     description: str | None = Field(
         default=None,
         max_length=2000,
         description="Project description",
     )
-    owner_id: int = Field(..., ge=1, description="ID of the user who owns the project")
+    status: ProjectStatus = Field(
+        default=ProjectStatus.ACTIVE,
+        description="Project status (ACTIVE/ARCHIVED)",
+    )
 
     @field_validator("name")
     @classmethod
@@ -33,15 +37,15 @@ class ProjectBase(BaseModel):
 
 
 class ProjectCreate(ProjectBase):
-    """Schema for creating a new project."""
+    """Schema for creating a new project inside a workspace."""
 
 
 class ProjectUpdate(BaseModel):
-    """Schema for updating an existing project."""
+    """Schema for updating an existing project (or archiving it)."""
 
     name: str | None = Field(default=None, min_length=3, max_length=200)
     description: str | None = Field(default=None, max_length=2000)
-    owner_id: int | None = Field(default=None, ge=1)
+    status: ProjectStatus | None = None
 
     @field_validator("name")
     @classmethod
@@ -62,13 +66,12 @@ class ProjectResponse(ProjectBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    workspace_id: int
     created_at: datetime
-    updated_at: datetime
 
 
 class ProjectDetailResponse(ProjectResponse):
-    """Schema for returning a project along with its owner and tasks."""
+    """Schema for returning a project with its tasks and labels."""
 
-    owner: UserResponse | None = None
     tasks: list[TaskResponse] = Field(default_factory=list)
-
+    labels: list[LabelResponse] = Field(default_factory=list)

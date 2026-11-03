@@ -32,7 +32,7 @@ async def list_users(
 ) -> PaginatedResponse[UserResponse]:
     return await service.list_users(
         page=pagination.page,
-        size=pagination.size,
+        limit=pagination.limit,
         is_active=is_active,
         search=search,
     )
@@ -87,4 +87,3 @@ async def delete_user(
 ) -> MessageResponse:
     await service.delete_user(user_id)
     return MessageResponse(message=f"User {user_id} deleted successfully")
-
