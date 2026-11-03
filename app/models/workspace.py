@@ -73,3 +73,4 @@ class WorkspaceMember(Base):
         back_populates="workspace_memberships",
         lazy="selectin",
     )
+

@@ -20,3 +20,4 @@ class LabelRepository(BaseRepository[Label]):
     ) -> tuple[list[Label], int, int]:
         filters: list[ColumnElement[bool]] = [Label.project_id == project_id]
         return await self.get_multi_paginated(page=page, limit=limit, filters=filters)
+

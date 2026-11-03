@@ -39,3 +39,4 @@ class TaskPriority(str, Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     URGENT = "URGENT"
+

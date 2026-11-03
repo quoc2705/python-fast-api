@@ -74,3 +74,4 @@ class WorkspaceDetailResponse(WorkspaceResponse):
 
     owner: UserResponse | None = None
     members: list[WorkspaceMemberResponse] = Field(default_factory=list)
+

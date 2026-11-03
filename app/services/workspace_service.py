@@ -127,3 +127,4 @@ class WorkspaceService:
                 detail=f"Member user_id={user_id} not found in workspace {workspace_id}",
             )
         await self._workspace_repo.remove_member(member)
+

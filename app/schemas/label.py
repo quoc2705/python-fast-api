@@ -37,3 +37,4 @@ class LabelResponse(LabelBase):
 
     id: int
     project_id: int
+

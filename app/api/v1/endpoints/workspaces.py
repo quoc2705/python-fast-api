@@ -140,3 +140,4 @@ async def create_workspace_project(
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> ProjectResponse:
     return await project_service.create_project(workspace_id, payload)
+

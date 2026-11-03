@@ -78,3 +78,4 @@ class WorkspaceRepository(BaseRepository[Workspace]):
     async def remove_member(self, member: WorkspaceMember) -> None:
         await self.session.delete(member)
         await self.session.commit()
+

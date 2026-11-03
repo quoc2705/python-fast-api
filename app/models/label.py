@@ -50,3 +50,4 @@ class Label(Base):
         back_populates="labels",
         lazy="selectin",
     )
+
