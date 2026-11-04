@@ -12,12 +12,12 @@ class MessageResponse(BaseModel):
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    """Generic paginated response wrapper using Pydantic v2."""
+    """Generic paginated response wrapper using Pydantic v2 (page + limit)."""
 
     model_config = ConfigDict(from_attributes=True)
 
     items: list[T] = Field(default_factory=list, description="Items on current page")
     total: int = Field(..., ge=0, description="Total number of matching items")
     page: int = Field(..., ge=1, description="Current page number (1-indexed)")
-    size: int = Field(..., ge=1, description="Page size")
+    limit: int = Field(..., ge=1, description="Maximum items per page")
     pages: int = Field(..., ge=0, description="Total number of pages")
