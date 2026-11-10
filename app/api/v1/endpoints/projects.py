@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 
 from app.api.deps import PaginationParams, get_project_service, get_task_service
 from app.models.enums import ProjectStatus, TaskPriority, TaskStatus
@@ -105,7 +105,7 @@ async def delete_project(
 @router.get(
     "/{project_id}/tasks",
     response_model=PaginatedResponse[TaskResponse],
-    summary="List tasks in a project with filtering and pagination (page + limit)",
+    summary="List tasks in a project (Filtered + Paginated + Cached in Redis)",
 )
 async def list_project_tasks(
     task_service: TaskServiceDep,
@@ -143,14 +143,19 @@ async def list_project_tasks(
     "/{project_id}/tasks",
     response_model=TaskResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new task inside a project",
+    summary="Create a new task in a project (invalidates Redis cache & triggers email notification if assigned)",
 )
 async def create_project_task(
     payload: TaskCreate,
+    background_tasks: BackgroundTasks,
     task_service: TaskServiceDep,
     project_id: Annotated[int, Path(ge=1, description="Project unique ID")],
 ) -> TaskResponse:
-    return await task_service.create_task_in_project(project_id, payload)
+    return await task_service.create_task_in_project(
+        project_id,
+        payload,
+        background_tasks=background_tasks,
+    )
 
 
 @router.get(
