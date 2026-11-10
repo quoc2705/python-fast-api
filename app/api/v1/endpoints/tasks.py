@@ -1,8 +1,9 @@
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 
 from app.api.deps import PaginationParams, get_task_service
+from app.core.notifications import notification_outbox
 from app.models.enums import TaskPriority, TaskStatus
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import MessageResponse, PaginatedResponse
@@ -56,6 +57,14 @@ async def list_tasks(
 
 
 @router.get(
+    "/notifications/outbox",
+    summary="Inspect background email notifications sent upon task assignment",
+)
+async def list_sent_notifications() -> list[dict[str, Any]]:
+    return list(reversed(notification_outbox[-50:]))
+
+
+@router.get(
     "/{task_id}",
     response_model=TaskDetailResponse,
     summary="Get a task by ID including labels and comments",
@@ -70,14 +79,19 @@ async def get_task(
 @router.patch(
     "/{task_id}",
     response_model=TaskResponse,
-    summary="Partially update a task (status, priority, assignee, due_date, etc.)",
+    summary="Partially update a task (invalidates Redis cache & triggers email notification if assignee changes)",
 )
 async def update_task(
     payload: TaskUpdate,
+    background_tasks: BackgroundTasks,
     service: TaskServiceDep,
     task_id: Annotated[int, Path(ge=1, description="Task unique ID")],
 ) -> TaskResponse:
-    return await service.update_task(task_id, payload)
+    return await service.update_task(
+        task_id,
+        payload,
+        background_tasks=background_tasks,
+    )
 
 
 @router.delete(
