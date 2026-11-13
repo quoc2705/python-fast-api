@@ -24,8 +24,9 @@ ENV/
 htmlcov/
 .coverage
 
-# IDE
+# IDE & Notebooks
 .vscode/
 .idea/
 *.swp
+*.ipynb
 

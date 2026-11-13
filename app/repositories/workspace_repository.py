@@ -37,6 +37,15 @@ class WorkspaceRepository(BaseRepository[Workspace]):
             filters.append(Workspace.owner_id == owner_id)
         return await self.get_multi_paginated(page=page, limit=limit, filters=filters)
 
+    async def list_members(self, workspace_id: int) -> list[WorkspaceMember]:
+        stmt = (
+            select(WorkspaceMember)
+            .where(WorkspaceMember.workspace_id == workspace_id)
+            .options(selectinload(WorkspaceMember.user))
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_member(
         self,
         workspace_id: int,
@@ -78,4 +87,3 @@ class WorkspaceRepository(BaseRepository[Workspace]):
     async def remove_member(self, member: WorkspaceMember) -> None:
         await self.session.delete(member)
         await self.session.commit()
-

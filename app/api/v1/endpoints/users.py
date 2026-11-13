@@ -2,15 +2,67 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Query, status
 
-from app.api.deps import PaginationParams, get_user_service
+from app.api.deps import (
+    PaginationParams,
+    get_auth_service,
+    get_current_user,
+    get_user_service,
+)
+from app.models.user import User
+from app.schemas.auth import ChangePasswordRequest
 from app.schemas.common import MessageResponse, PaginatedResponse
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.services.auth_service import AuthService
 from app.services.user_service import UserService
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
 PaginationDep = Annotated[PaginationParams, Depends()]
+
+
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Get profile of the currently authenticated user",
+    responses={401: {"description": "Missing or invalid Bearer token"}},
+)
+async def get_my_profile(current_user: CurrentUserDep) -> UserResponse:
+    return UserResponse.model_validate(current_user)
+
+
+@router.patch(
+    "/me",
+    response_model=UserResponse,
+    summary="Update profile of the currently authenticated user",
+    responses={401: {"description": "Missing or invalid Bearer token"}},
+)
+async def update_my_profile(
+    payload: UserUpdate,
+    current_user: CurrentUserDep,
+    service: UserServiceDep,
+) -> UserResponse:
+    return await service.update_user(current_user.id, payload)
+
+
+@router.post(
+    "/me/change-password",
+    response_model=MessageResponse,
+    summary="Change password of the currently authenticated user",
+    responses={
+        400: {"description": "Current password is incorrect"},
+        401: {"description": "Missing or invalid Bearer token"},
+    },
+)
+async def change_my_password(
+    payload: ChangePasswordRequest,
+    current_user: CurrentUserDep,
+    auth_service: AuthServiceDep,
+) -> MessageResponse:
+    await auth_service.change_password(current_user, payload)
+    return MessageResponse(message="Password updated successfully")
 
 
 @router.get(
