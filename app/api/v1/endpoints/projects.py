@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 
@@ -10,6 +10,7 @@ from app.api.deps import (
     get_task_service,
     get_workspace_repository,
 )
+from app.core.cache import cache_manager
 from app.core.permissions import (
     OWNER_ONLY_ROLES,
     READ_ROLES,
@@ -205,6 +206,44 @@ async def list_project_tasks(
         priority_filter=priority_filter,
         assignee_id=assignee_id,
         search=search,
+    )
+
+
+@router.get(
+    "/{project_id}/tasks/cache-stats",
+    summary="Inspect Redis / memory cache hit-rate and telemetry",
+)
+async def get_project_tasks_cache_stats(
+    project_id: Annotated[int, Path(ge=1, description="Project unique ID")],
+) -> dict[str, Any]:
+    return {
+        "project_id": project_id,
+        "cache_prefix": f"project:{project_id}:tasks:",
+        **cache_manager.get_stats(),
+    }
+
+
+@router.delete(
+    "/{project_id}/tasks/cache",
+    response_model=MessageResponse,
+    summary="Manually invalidate cached task queries for a project (RBAC: OWNER/EDITOR)",
+)
+async def flush_project_tasks_cache(
+    project_repo: ProjectRepoDep,
+    workspace_repo: WorkspaceRepoDep,
+    current_user: OptionalUserDep,
+    project_id: Annotated[int, Path(ge=1, description="Project unique ID")],
+) -> MessageResponse:
+    await ensure_project_role(
+        project_repo,
+        workspace_repo,
+        project_id,
+        current_user,
+        WRITE_ROLES,
+    )
+    deleted = await cache_manager.invalidate_prefix(f"project:{project_id}:tasks:")
+    return MessageResponse(
+        message=f"Invalidated {deleted} cached entries for project {project_id}"
     )
 
 

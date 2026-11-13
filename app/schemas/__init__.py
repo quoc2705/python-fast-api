@@ -6,8 +6,17 @@ from app.models.enums import (
     UserRole,
     WorkspaceRole,
 )
+from app.schemas.auth import (
+    ChangePasswordRequest,
+    LoginRequest,
+    LogoutRequest,
+    RefreshTokenRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import MessageResponse, PaginatedResponse
+from app.schemas.error import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
 from app.schemas.project import (
     ProjectCreate,
@@ -27,16 +36,22 @@ from app.schemas.workspace import (
     WorkspaceDetailResponse,
     WorkspaceMemberAdd,
     WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
     WorkspaceResponse,
     WorkspaceUpdate,
 )
 
 __all__ = [
+    "COMMON_ERROR_RESPONSES",
+    "ChangePasswordRequest",
     "CommentCreate",
     "CommentResponse",
+    "ErrorResponse",
     "LabelCreate",
     "LabelResponse",
     "LabelUpdate",
+    "LoginRequest",
+    "LogoutRequest",
     "MessageResponse",
     "PaginatedResponse",
     "ProjectCreate",
@@ -44,12 +59,15 @@ __all__ = [
     "ProjectResponse",
     "ProjectStatus",
     "ProjectUpdate",
+    "RefreshTokenRequest",
+    "RegisterRequest",
     "TaskCreate",
     "TaskDetailResponse",
     "TaskPriority",
     "TaskResponse",
     "TaskStatus",
     "TaskUpdate",
+    "TokenResponse",
     "UserCreate",
     "UserResponse",
     "UserRole",
@@ -58,6 +76,7 @@ __all__ = [
     "WorkspaceDetailResponse",
     "WorkspaceMemberAdd",
     "WorkspaceMemberResponse",
+    "WorkspaceMemberRoleUpdate",
     "WorkspaceResponse",
     "WorkspaceRole",
     "WorkspaceUpdate",

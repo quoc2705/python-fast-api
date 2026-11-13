@@ -11,12 +11,15 @@ logger = get_logger("app.cache")
 
 
 class CacheManager:
-    """Async Redis cache with automatic in-memory TTL fallback when Redis is unavailable."""
+    """Async Redis cache with automatic in-memory TTL fallback and hit/miss telemetry."""
 
     def __init__(self) -> None:
         self._redis: Redis | None = None
         self._redis_available: bool = False
         self._memory_store: dict[str, tuple[float, str]] = {}
+        self._hits: int = 0
+        self._misses: int = 0
+        self._invalidations: int = 0
 
     async def connect(self) -> None:
         """Attempt connection to Redis; fall back to in-memory cache if offline."""
@@ -56,14 +59,20 @@ class CacheManager:
         if self._redis_available and self._redis is not None:
             try:
                 raw = await self._redis.get(key)
-                return json.loads(raw) if raw is not None else None
+                if raw is not None:
+                    self._hits += 1
+                    return json.loads(raw)
+                self._misses += 1
+                return None
             except Exception:
                 self._redis_available = False
 
         self._cleanup_expired_memory()
         entry = self._memory_store.get(key)
         if entry is None:
+            self._misses += 1
             return None
+        self._hits += 1
         return json.loads(entry[1])
 
     async def set_json(
@@ -99,8 +108,23 @@ class CacheManager:
         for key in matching_mem:
             self._memory_store.pop(key, None)
             deleted_count += 1
+        self._invalidations += deleted_count
         return deleted_count
+
+    def get_stats(self) -> dict[str, Any]:
+        """Return cache hit/miss telemetry and active backend details."""
+        self._cleanup_expired_memory()
+        total_lookups = self._hits + self._misses
+        hit_rate = round((self._hits / total_lookups) * 100, 2) if total_lookups else 0.0
+        return {
+            "backend": "redis" if self._redis_available else "memory_fallback",
+            "ttl_seconds": settings.CACHE_TTL_SECONDS,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate_percent": hit_rate,
+            "invalidations": self._invalidations,
+            "memory_keys_count": len(self._memory_store),
+        }
 
 
 cache_manager = CacheManager()
-

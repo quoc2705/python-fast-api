@@ -12,10 +12,37 @@ from app.core.cache import cache_manager
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
-from app.core.middleware import RequestContextMiddleware
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.db.session import engine, init_db
 
 WEB_INDEX_PATH = Path(__file__).resolve().parent / "web" / "index.html"
+
+OPENAPI_TAGS = [
+    {
+        "name": "Authentication",
+        "description": "JWT registration, login, token rotation, and logout revocation.",
+    },
+    {
+        "name": "Users",
+        "description": "User profile management (`/me`), password changes, and directory administration.",
+    },
+    {
+        "name": "Workspaces",
+        "description": "Workspace management and role-based member administration (`OWNER`/`EDITOR`/`VIEWER`).",
+    },
+    {
+        "name": "Projects",
+        "description": "Project lifecycle, project labels, and Redis-cached project task listings.",
+    },
+    {
+        "name": "Tasks",
+        "description": "Task CRUD, status transitions, label attachments, comments, and background notifications.",
+    },
+    {
+        "name": "Health",
+        "description": "Service liveness and readiness probes.",
+    },
+]
 
 
 @asynccontextmanager
@@ -39,9 +66,11 @@ def create_app() -> FastAPI:
             "Layered Architecture, SQLAlchemy 2.x Async, JWT Auth, RBAC, Redis Cache, "
             "Background Tasks, and Alembic Migrations"
         ),
+        openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
 
+    application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,
