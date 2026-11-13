@@ -1,5 +1,4 @@
-from fastapi import HTTPException, status
-
+from app.core.exceptions import BadRequestException, NotFoundException
 from app.models.enums import WorkspaceRole
 from app.repositories.user_repository import UserRepository
 from app.repositories.workspace_repository import WorkspaceRepository
@@ -9,13 +8,14 @@ from app.schemas.workspace import (
     WorkspaceDetailResponse,
     WorkspaceMemberAdd,
     WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
     WorkspaceResponse,
     WorkspaceUpdate,
 )
 
 
 class WorkspaceService:
-    """Business logic layer for managing workspaces and workspace memberships."""
+    """Business logic layer for managing workspaces and workspace RBAC memberships."""
 
     def __init__(
         self,
@@ -48,19 +48,13 @@ class WorkspaceService:
     async def get_workspace(self, workspace_id: int) -> WorkspaceDetailResponse:
         workspace = await self._workspace_repo.get_by_id_with_details(workspace_id)
         if workspace is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workspace with id={workspace_id} not found",
-            )
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
         return WorkspaceDetailResponse.model_validate(workspace)
 
     async def create_workspace(self, payload: WorkspaceCreate) -> WorkspaceResponse:
         owner = await self._user_repo.get_by_id(payload.owner_id)
         if owner is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Owner User with id={payload.owner_id} not found",
-            )
+            raise NotFoundException(f"Owner User with id={payload.owner_id} not found")
         workspace = await self._workspace_repo.create(payload.model_dump())
         await self._workspace_repo.add_or_update_member(
             workspace_id=workspace.id,
@@ -76,10 +70,7 @@ class WorkspaceService:
     ) -> WorkspaceResponse:
         workspace = await self._workspace_repo.get_by_id(workspace_id)
         if workspace is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workspace with id={workspace_id} not found",
-            )
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
         updated = await self._workspace_repo.update(
             workspace,
             payload.model_dump(exclude_unset=True),
@@ -89,11 +80,15 @@ class WorkspaceService:
     async def delete_workspace(self, workspace_id: int) -> None:
         workspace = await self._workspace_repo.get_by_id(workspace_id)
         if workspace is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workspace with id={workspace_id} not found",
-            )
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
         await self._workspace_repo.delete(workspace)
+
+    async def list_members(self, workspace_id: int) -> list[WorkspaceMemberResponse]:
+        workspace = await self._workspace_repo.get_by_id(workspace_id)
+        if workspace is None:
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
+        members = await self._workspace_repo.list_members(workspace_id)
+        return [WorkspaceMemberResponse.model_validate(m) for m in members]
 
     async def add_member(
         self,
@@ -102,16 +97,10 @@ class WorkspaceService:
     ) -> WorkspaceMemberResponse:
         workspace = await self._workspace_repo.get_by_id(workspace_id)
         if workspace is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workspace with id={workspace_id} not found",
-            )
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
         user = await self._user_repo.get_by_id(payload.user_id)
         if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id={payload.user_id} not found",
-            )
+            raise NotFoundException(f"User with id={payload.user_id} not found")
         member = await self._workspace_repo.add_or_update_member(
             workspace_id=workspace_id,
             user_id=payload.user_id,
@@ -119,12 +108,31 @@ class WorkspaceService:
         )
         return WorkspaceMemberResponse.model_validate(member)
 
-    async def remove_member(self, workspace_id: int, user_id: int) -> None:
+    async def update_member_role(
+        self,
+        workspace_id: int,
+        user_id: int,
+        payload: WorkspaceMemberRoleUpdate,
+    ) -> WorkspaceMemberResponse:
         member = await self._workspace_repo.get_member(workspace_id, user_id)
         if member is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Member user_id={user_id} not found in workspace {workspace_id}",
+            raise NotFoundException(
+                f"Member user_id={user_id} not found in workspace {workspace_id}"
+            )
+        updated = await self._workspace_repo.add_or_update_member(
+            workspace_id=workspace_id,
+            user_id=user_id,
+            role=payload.role,
+        )
+        return WorkspaceMemberResponse.model_validate(updated)
+
+    async def remove_member(self, workspace_id: int, user_id: int) -> None:
+        workspace = await self._workspace_repo.get_by_id(workspace_id)
+        if workspace is not None and workspace.owner_id == user_id:
+            raise BadRequestException("Cannot remove the primary owner of the workspace")
+        member = await self._workspace_repo.get_member(workspace_id, user_id)
+        if member is None:
+            raise NotFoundException(
+                f"Member user_id={user_id} not found in workspace {workspace_id}"
             )
         await self._workspace_repo.remove_member(member)
-

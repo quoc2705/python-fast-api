@@ -48,6 +48,15 @@ class WorkspaceMemberAdd(BaseModel):
     )
 
 
+class WorkspaceMemberRoleUpdate(BaseModel):
+    """Schema for updating an existing workspace member's role."""
+
+    role: WorkspaceRole = Field(
+        ...,
+        description="New workspace role (OWNER/EDITOR/VIEWER)",
+    )
+
+
 class WorkspaceMemberResponse(BaseModel):
     """Schema for returning workspace membership details."""
 
@@ -74,4 +83,3 @@ class WorkspaceDetailResponse(WorkspaceResponse):
 
     owner: UserResponse | None = None
     members: list[WorkspaceMemberResponse] = Field(default_factory=list)
-

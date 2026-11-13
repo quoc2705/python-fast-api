@@ -1,15 +1,8 @@
-import hashlib
-
-from fastapi import HTTPException, status
-
+from app.core.exceptions import ConflictException, NotFoundException
+from app.core.security import hash_password
 from app.repositories.user_repository import UserRepository
 from app.schemas.common import PaginatedResponse
 from app.schemas.user import UserCreate, UserResponse, UserUpdate
-
-
-def hash_password_placeholder(raw_password: str) -> str:
-    """Deterministic password hash helper (upgraded to passlib/bcrypt in Session 3 Auth)."""
-    return f"sha256${hashlib.sha256(raw_password.encode('utf-8')).hexdigest()}"
 
 
 class UserService:
@@ -43,38 +36,30 @@ class UserService:
     async def get_user(self, user_id: int) -> UserResponse:
         user = await self._repository.get_by_id(user_id)
         if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id={user_id} not found",
-            )
+            raise NotFoundException(f"User with id={user_id} not found")
         return UserResponse.model_validate(user)
 
     async def create_user(self, payload: UserCreate) -> UserResponse:
         existing = await self._repository.get_by_email(payload.email)
         if existing is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"User with email '{payload.email}' already exists",
+            raise ConflictException(
+                f"User with email '{payload.email}' already exists"
             )
         data = payload.model_dump(exclude={"password"})
-        data["hashed_password"] = hash_password_placeholder(payload.password)
+        data["hashed_password"] = hash_password(payload.password)
         user = await self._repository.create(data)
         return UserResponse.model_validate(user)
 
     async def update_user(self, user_id: int, payload: UserUpdate) -> UserResponse:
         user = await self._repository.get_by_id(user_id)
         if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id={user_id} not found",
-            )
+            raise NotFoundException(f"User with id={user_id} not found")
         update_data = payload.model_dump(exclude_unset=True)
         if "email" in update_data and update_data["email"] != user.email:
             conflict = await self._repository.get_by_email(update_data["email"])
             if conflict is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"User with email '{update_data['email']}' already exists",
+                raise ConflictException(
+                    f"User with email '{update_data['email']}' already exists"
                 )
         updated = await self._repository.update(user, update_data)
         return UserResponse.model_validate(updated)
@@ -82,8 +67,5 @@ class UserService:
     async def delete_user(self, user_id: int) -> None:
         user = await self._repository.get_by_id(user_id)
         if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"User with id={user_id} not found",
-            )
+            raise NotFoundException(f"User with id={user_id} not found")
         await self._repository.delete(user)

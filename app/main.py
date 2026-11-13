@@ -3,21 +3,56 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 import app.models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
 from app.api.v1.router import api_router
+from app.core.cache import cache_manager
 from app.core.config import settings
+from app.core.exceptions import register_exception_handlers
+from app.core.logging import setup_logging
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.db.session import engine, init_db
 
 WEB_INDEX_PATH = Path(__file__).resolve().parent / "web" / "index.html"
 
+OPENAPI_TAGS = [
+    {
+        "name": "Authentication",
+        "description": "JWT registration, login, token rotation, and logout revocation.",
+    },
+    {
+        "name": "Users",
+        "description": "User profile management (`/me`), password changes, and directory administration.",
+    },
+    {
+        "name": "Workspaces",
+        "description": "Workspace management and role-based member administration (`OWNER`/`EDITOR`/`VIEWER`).",
+    },
+    {
+        "name": "Projects",
+        "description": "Project lifecycle, project labels, and Redis-cached project task listings.",
+    },
+    {
+        "name": "Tasks",
+        "description": "Task CRUD, status transitions, label attachments, comments, and background notifications.",
+    },
+    {
+        "name": "Health",
+        "description": "Service liveness and readiness probes.",
+    },
+]
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan context manager managing async database lifecycle."""
+    """Application lifespan context manager managing DB and Redis cache lifecycle."""
+    setup_logging(debug=settings.DEBUG)
     await init_db()
+    await cache_manager.connect()
     yield
+    await cache_manager.close()
     await engine.dispose()
 
 
@@ -28,10 +63,24 @@ def create_app() -> FastAPI:
         version=settings.APP_VERSION,
         description=(
             "TaskHub — Hệ thống quản lý công việc (Task Management API) built with "
-            "Layered Architecture, SQLAlchemy 2.x Async, Generic BaseRepository[T], and Alembic"
+            "Layered Architecture, SQLAlchemy 2.x Async, JWT Auth, RBAC, Redis Cache, "
+            "Background Tasks, and Alembic Migrations"
         ),
+        openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
+
+    application.add_middleware(SecurityHeadersMiddleware)
+    application.add_middleware(RequestContextMiddleware)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    register_exception_handlers(application)
     application.include_router(api_router, prefix=settings.API_V1_PREFIX)
 
     @application.get(
@@ -44,7 +93,12 @@ def create_app() -> FastAPI:
 
     @application.get("/health", tags=["Health"], summary="Health check endpoint")
     async def health_check() -> dict[str, str]:
-        return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+        return {
+            "status": "ok",
+            "app": settings.APP_NAME,
+            "version": settings.APP_VERSION,
+            "env": settings.APP_ENV,
+        }
 
     return application
 
