@@ -37,3 +37,4 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
             request_id,
         )
         return response
+

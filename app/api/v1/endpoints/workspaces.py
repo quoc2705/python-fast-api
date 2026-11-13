@@ -9,8 +9,12 @@ from app.api.deps import (
     get_workspace_repository,
     get_workspace_service,
 )
-from app.core.permissions import ensure_workspace_role
-from app.models.enums import WorkspaceRole
+from app.core.permissions import (
+    OWNER_ONLY_ROLES,
+    READ_ROLES,
+    WRITE_ROLES,
+    ensure_workspace_role,
+)
 from app.models.user import User
 from app.repositories.workspace_repository import WorkspaceRepository
 from app.schemas.common import MessageResponse, PaginatedResponse
@@ -20,6 +24,7 @@ from app.schemas.workspace import (
     WorkspaceDetailResponse,
     WorkspaceMemberAdd,
     WorkspaceMemberResponse,
+    WorkspaceMemberRoleUpdate,
     WorkspaceResponse,
     WorkspaceUpdate,
 )
@@ -83,7 +88,7 @@ async def get_workspace(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER, WorkspaceRole.EDITOR, WorkspaceRole.VIEWER],
+        READ_ROLES,
     )
     return await service.get_workspace(workspace_id)
 
@@ -104,7 +109,7 @@ async def update_workspace(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER],
+        OWNER_ONLY_ROLES,
     )
     return await service.update_workspace(workspace_id, payload)
 
@@ -124,10 +129,30 @@ async def delete_workspace(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER],
+        OWNER_ONLY_ROLES,
     )
     await service.delete_workspace(workspace_id)
     return MessageResponse(message=f"Workspace {workspace_id} deleted successfully")
+
+
+@router.get(
+    "/{workspace_id}/members",
+    response_model=list[WorkspaceMemberResponse],
+    summary="List all members and roles in a workspace (RBAC: OWNER/EDITOR/VIEWER)",
+)
+async def list_workspace_members(
+    service: WorkspaceServiceDep,
+    workspace_repo: WorkspaceRepoDep,
+    current_user: OptionalUserDep,
+    workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
+) -> list[WorkspaceMemberResponse]:
+    await ensure_workspace_role(
+        workspace_repo,
+        workspace_id,
+        current_user,
+        READ_ROLES,
+    )
+    return await service.list_members(workspace_id)
 
 
 @router.post(
@@ -147,9 +172,31 @@ async def add_workspace_member(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER],
+        OWNER_ONLY_ROLES,
     )
     return await service.add_member(workspace_id, payload)
+
+
+@router.patch(
+    "/{workspace_id}/members/{user_id}",
+    response_model=WorkspaceMemberResponse,
+    summary="Change a workspace member's role (RBAC: OWNER only)",
+)
+async def update_workspace_member_role(
+    payload: WorkspaceMemberRoleUpdate,
+    service: WorkspaceServiceDep,
+    workspace_repo: WorkspaceRepoDep,
+    current_user: OptionalUserDep,
+    workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
+    user_id: Annotated[int, Path(ge=1, description="User ID to update role")],
+) -> WorkspaceMemberResponse:
+    await ensure_workspace_role(
+        workspace_repo,
+        workspace_id,
+        current_user,
+        OWNER_ONLY_ROLES,
+    )
+    return await service.update_member_role(workspace_id, user_id, payload)
 
 
 @router.delete(
@@ -168,7 +215,7 @@ async def remove_workspace_member(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER],
+        OWNER_ONLY_ROLES,
     )
     await service.remove_member(workspace_id, user_id)
     return MessageResponse(
@@ -193,6 +240,6 @@ async def create_workspace_project(
         workspace_repo,
         workspace_id,
         current_user,
-        [WorkspaceRole.OWNER, WorkspaceRole.EDITOR],
+        WRITE_ROLES,
     )
     return await project_service.create_project(workspace_id, payload)

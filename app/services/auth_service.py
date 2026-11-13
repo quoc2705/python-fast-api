@@ -109,3 +109,4 @@ class AuthService:
         if not user.is_active:
             raise ForbiddenException("User account is inactive")
         return user
+

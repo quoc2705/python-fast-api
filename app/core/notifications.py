@@ -39,3 +39,4 @@ def send_task_assigned_email_notification(
         task_id,
         task_title,
     )
+

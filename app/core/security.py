@@ -109,3 +109,4 @@ async def is_token_revoked(jti: str) -> bool:
     """Check whether a token JTI has been revoked."""
     data = await cache_manager.get_json(f"revoked_jti:{jti}")
     return data is not None
+

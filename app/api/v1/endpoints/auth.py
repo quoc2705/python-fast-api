@@ -79,3 +79,4 @@ async def logout(
 ) -> MessageResponse:
     await service.logout(payload.refresh_token)
     return MessageResponse(message="Logged out and refresh token revoked successfully")
+
