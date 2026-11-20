@@ -32,17 +32,16 @@ class WorkspaceService:
         limit: int = 10,
         owner_id: int | None = None,
     ) -> PaginatedResponse[WorkspaceResponse]:
-        items, total, pages = await self._workspace_repo.list_workspaces(
+        items, total = await self._workspace_repo.list_workspaces(
             page=page,
             limit=limit,
             owner_id=owner_id,
         )
-        return PaginatedResponse[WorkspaceResponse](
+        return PaginatedResponse[WorkspaceResponse].create(
             items=[WorkspaceResponse.model_validate(item) for item in items],
             total=total,
             page=page,
             limit=limit,
-            pages=pages,
         )
 
     async def get_workspace(self, workspace_id: int) -> WorkspaceDetailResponse:
@@ -51,16 +50,25 @@ class WorkspaceService:
             raise NotFoundException(f"Workspace with id={workspace_id} not found")
         return WorkspaceDetailResponse.model_validate(workspace)
 
-    async def create_workspace(self, payload: WorkspaceCreate) -> WorkspaceResponse:
-        owner = await self._user_repo.get_by_id(payload.owner_id)
+    async def create_workspace(
+        self,
+        owner_id: int,
+        payload: WorkspaceCreate,
+    ) -> WorkspaceResponse:
+        owner = await self._user_repo.get_by_id(owner_id)
         if owner is None:
-            raise NotFoundException(f"Owner User with id={payload.owner_id} not found")
-        workspace = await self._workspace_repo.create(payload.model_dump())
+            raise NotFoundException(f"Owner User with id={owner_id} not found")
+        workspace = await self._workspace_repo.create(
+            {"name": payload.name, "owner_id": owner_id},
+            commit=False,
+        )
         await self._workspace_repo.add_or_update_member(
             workspace_id=workspace.id,
-            user_id=payload.owner_id,
+            user_id=owner_id,
             role=WorkspaceRole.OWNER,
+            commit=False,
         )
+        await self._workspace_repo.commit()
         return WorkspaceResponse.model_validate(workspace)
 
     async def update_workspace(
@@ -98,6 +106,13 @@ class WorkspaceService:
         workspace = await self._workspace_repo.get_by_id(workspace_id)
         if workspace is None:
             raise NotFoundException(f"Workspace with id={workspace_id} not found")
+        if (
+            workspace.owner_id == payload.user_id
+            and payload.role != WorkspaceRole.OWNER
+        ):
+            raise BadRequestException(
+                "Cannot downgrade the primary owner of the workspace"
+            )
         user = await self._user_repo.get_by_id(payload.user_id)
         if user is None:
             raise NotFoundException(f"User with id={payload.user_id} not found")
@@ -114,6 +129,13 @@ class WorkspaceService:
         user_id: int,
         payload: WorkspaceMemberRoleUpdate,
     ) -> WorkspaceMemberResponse:
+        workspace = await self._workspace_repo.get_by_id(workspace_id)
+        if workspace is None:
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
+        if workspace.owner_id == user_id:
+            raise BadRequestException(
+                "Cannot change the role of the primary workspace owner"
+            )
         member = await self._workspace_repo.get_member(workspace_id, user_id)
         if member is None:
             raise NotFoundException(

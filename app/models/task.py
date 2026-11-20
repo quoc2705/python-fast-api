@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SqlEnum, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAtMixin
@@ -33,14 +34,24 @@ class Task(Base, CreatedAtMixin):
     title: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(
-        SqlEnum(TaskStatus, name="task_status", native_enum=False),
+        SqlEnum(
+            TaskStatus,
+            name="task_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=TaskStatus.TODO,
         server_default=TaskStatus.TODO.value,
         index=True,
         nullable=False,
     )
     priority: Mapped[TaskPriority] = mapped_column(
-        SqlEnum(TaskPriority, name="task_priority", native_enum=False),
+        SqlEnum(
+            TaskPriority,
+            name="task_priority",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=TaskPriority.MEDIUM,
         server_default=TaskPriority.MEDIUM.value,
         index=True,
@@ -59,19 +70,16 @@ class Task(Base, CreatedAtMixin):
     project: Mapped["Project"] = relationship(
         "Project",
         back_populates="tasks",
-        lazy="selectin",
     )
     assignee: Mapped["User | None"] = relationship(
         "User",
         back_populates="assigned_tasks",
         foreign_keys=[assignee_id],
-        lazy="selectin",
     )
     creator: Mapped["User | None"] = relationship(
         "User",
         back_populates="created_tasks",
         foreign_keys=[created_by],
-        lazy="selectin",
     )
     labels: Mapped[list["Label"]] = relationship(
         "Label",
@@ -83,5 +91,5 @@ class Task(Base, CreatedAtMixin):
         "Comment",
         back_populates="task",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )

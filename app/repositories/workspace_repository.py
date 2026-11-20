@@ -31,7 +31,7 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         page: int = 1,
         limit: int = 10,
         owner_id: int | None = None,
-    ) -> tuple[list[Workspace], int, int]:
+    ) -> tuple[list[Workspace], int]:
         filters: list[ColumnElement[bool]] = []
         if owner_id is not None:
             filters.append(Workspace.owner_id == owner_id)
@@ -67,6 +67,8 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         workspace_id: int,
         user_id: int,
         role: WorkspaceRole,
+        *,
+        commit: bool = True,
     ) -> WorkspaceMember:
         member = await self.get_member(workspace_id, user_id)
         if member is None:
@@ -79,11 +81,20 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         else:
             member.role = role
             self.session.add(member)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()
         refreshed = await self.get_member(workspace_id, user_id)
         assert refreshed is not None
         return refreshed
 
-    async def remove_member(self, member: WorkspaceMember) -> None:
+    async def remove_member(
+        self,
+        member: WorkspaceMember,
+        *,
+        commit: bool = True,
+    ) -> None:
         await self.session.delete(member)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()

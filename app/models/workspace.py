@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SqlEnum, ForeignKey, String
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAtMixin
@@ -27,19 +28,18 @@ class Workspace(Base, CreatedAtMixin):
     owner: Mapped["User"] = relationship(
         "User",
         back_populates="owned_workspaces",
-        lazy="selectin",
     )
     members: Mapped[list["WorkspaceMember"]] = relationship(
         "WorkspaceMember",
         back_populates="workspace",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )
     projects: Mapped[list["Project"]] = relationship(
         "Project",
         back_populates="workspace",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )
 
 
@@ -57,7 +57,12 @@ class WorkspaceMember(Base):
         primary_key=True,
     )
     role: Mapped[WorkspaceRole] = mapped_column(
-        SqlEnum(WorkspaceRole, name="workspace_role", native_enum=False),
+        SqlEnum(
+            WorkspaceRole,
+            name="workspace_role",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=WorkspaceRole.VIEWER,
         server_default=WorkspaceRole.VIEWER.value,
         nullable=False,
@@ -66,11 +71,8 @@ class WorkspaceMember(Base):
     workspace: Mapped["Workspace"] = relationship(
         "Workspace",
         back_populates="members",
-        lazy="selectin",
     )
     user: Mapped["User"] = relationship(
         "User",
         back_populates="workspace_memberships",
-        lazy="selectin",
     )
-

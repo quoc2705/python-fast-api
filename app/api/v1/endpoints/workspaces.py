@@ -1,10 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from app.api.deps import (
     PaginationParams,
-    get_optional_current_user,
+    get_current_user,
     get_project_service,
     get_workspace_repository,
     get_workspace_service,
@@ -17,7 +17,12 @@ from app.core.permissions import (
 )
 from app.models.user import User
 from app.repositories.workspace_repository import WorkspaceRepository
-from app.schemas.common import MessageResponse, PaginatedResponse
+from app.schemas.common import PaginatedResponse
+from app.schemas.error import (
+    AUTH_ERROR_RESPONSES,
+    RESOURCE_READ_RESPONSES,
+    RESOURCE_WRITE_RESPONSES,
+)
 from app.schemas.project import ProjectCreate, ProjectResponse
 from app.schemas.workspace import (
     WorkspaceCreate,
@@ -36,7 +41,7 @@ router = APIRouter(prefix="/workspaces", tags=["Workspaces"])
 WorkspaceServiceDep = Annotated[WorkspaceService, Depends(get_workspace_service)]
 WorkspaceRepoDep = Annotated[WorkspaceRepository, Depends(get_workspace_repository)]
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
-OptionalUserDep = Annotated[User | None, Depends(get_optional_current_user)]
+CurrentUserDep = Annotated[User, Depends(get_current_user)]
 PaginationDep = Annotated[PaginationParams, Depends()]
 
 
@@ -44,8 +49,10 @@ PaginationDep = Annotated[PaginationParams, Depends()]
     "",
     response_model=PaginatedResponse[WorkspaceResponse],
     summary="List workspaces with pagination",
+    responses=AUTH_ERROR_RESPONSES,
 )
 async def list_workspaces(
+    _current_user: CurrentUserDep,
     service: WorkspaceServiceDep,
     pagination: PaginationDep,
     owner_id: Annotated[
@@ -64,24 +71,27 @@ async def list_workspaces(
     "",
     response_model=WorkspaceResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new workspace",
+    summary="Create a new workspace owned by the current authenticated user",
+    responses=AUTH_ERROR_RESPONSES,
 )
 async def create_workspace(
     payload: WorkspaceCreate,
+    current_user: CurrentUserDep,
     service: WorkspaceServiceDep,
 ) -> WorkspaceResponse:
-    return await service.create_workspace(payload)
+    return await service.create_workspace(current_user.id, payload)
 
 
 @router.get(
     "/{workspace_id}",
     response_model=WorkspaceDetailResponse,
     summary="Get workspace details including owner and members (RBAC: OWNER/EDITOR/VIEWER)",
+    responses=RESOURCE_READ_RESPONSES,
 )
 async def get_workspace(
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> WorkspaceDetailResponse:
     await ensure_workspace_role(
@@ -97,12 +107,13 @@ async def get_workspace(
     "/{workspace_id}",
     response_model=WorkspaceResponse,
     summary="Update a workspace by ID (RBAC: OWNER only)",
+    responses=RESOURCE_WRITE_RESPONSES,
 )
 async def update_workspace(
     payload: WorkspaceUpdate,
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> WorkspaceResponse:
     await ensure_workspace_role(
@@ -116,15 +127,16 @@ async def update_workspace(
 
 @router.delete(
     "/{workspace_id}",
-    response_model=MessageResponse,
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a workspace by ID (RBAC: OWNER only)",
+    responses=RESOURCE_READ_RESPONSES,
 )
 async def delete_workspace(
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
-) -> MessageResponse:
+) -> Response:
     await ensure_workspace_role(
         workspace_repo,
         workspace_id,
@@ -132,18 +144,19 @@ async def delete_workspace(
         OWNER_ONLY_ROLES,
     )
     await service.delete_workspace(workspace_id)
-    return MessageResponse(message=f"Workspace {workspace_id} deleted successfully")
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
     "/{workspace_id}/members",
     response_model=list[WorkspaceMemberResponse],
     summary="List all members and roles in a workspace (RBAC: OWNER/EDITOR/VIEWER)",
+    responses=RESOURCE_READ_RESPONSES,
 )
 async def list_workspace_members(
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> list[WorkspaceMemberResponse]:
     await ensure_workspace_role(
@@ -160,12 +173,13 @@ async def list_workspace_members(
     response_model=WorkspaceMemberResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Invite or update a member in a workspace (RBAC: OWNER only)",
+    responses=RESOURCE_WRITE_RESPONSES,
 )
 async def add_workspace_member(
     payload: WorkspaceMemberAdd,
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> WorkspaceMemberResponse:
     await ensure_workspace_role(
@@ -181,12 +195,13 @@ async def add_workspace_member(
     "/{workspace_id}/members/{user_id}",
     response_model=WorkspaceMemberResponse,
     summary="Change a workspace member's role (RBAC: OWNER only)",
+    responses=RESOURCE_WRITE_RESPONSES,
 )
 async def update_workspace_member_role(
     payload: WorkspaceMemberRoleUpdate,
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
     user_id: Annotated[int, Path(ge=1, description="User ID to update role")],
 ) -> WorkspaceMemberResponse:
@@ -201,16 +216,17 @@ async def update_workspace_member_role(
 
 @router.delete(
     "/{workspace_id}/members/{user_id}",
-    response_model=MessageResponse,
+    status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove a member from a workspace (RBAC: OWNER only)",
+    responses=RESOURCE_WRITE_RESPONSES,
 )
 async def remove_workspace_member(
     service: WorkspaceServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
     user_id: Annotated[int, Path(ge=1, description="User ID to remove")],
-) -> MessageResponse:
+) -> Response:
     await ensure_workspace_role(
         workspace_repo,
         workspace_id,
@@ -218,9 +234,7 @@ async def remove_workspace_member(
         OWNER_ONLY_ROLES,
     )
     await service.remove_member(workspace_id, user_id)
-    return MessageResponse(
-        message=f"User {user_id} removed from workspace {workspace_id}"
-    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
@@ -228,12 +242,13 @@ async def remove_workspace_member(
     response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new project inside a workspace (RBAC: OWNER/EDITOR)",
+    responses=RESOURCE_WRITE_RESPONSES,
 )
 async def create_workspace_project(
     payload: ProjectCreate,
     project_service: ProjectServiceDep,
     workspace_repo: WorkspaceRepoDep,
-    current_user: OptionalUserDep,
+    current_user: CurrentUserDep,
     workspace_id: Annotated[int, Path(ge=1, description="Workspace ID")],
 ) -> ProjectResponse:
     await ensure_workspace_role(

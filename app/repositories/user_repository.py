@@ -23,7 +23,7 @@ class UserRepository(BaseRepository[User]):
         limit: int = 10,
         is_active: bool | None = None,
         search: str | None = None,
-    ) -> tuple[list[User], int, int]:
+    ) -> tuple[list[User], int]:
         filters: list[ColumnElement[bool]] = []
         if is_active is not None:
             filters.append(User.is_active == is_active)

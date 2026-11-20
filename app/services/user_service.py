@@ -1,8 +1,8 @@
 from app.core.exceptions import ConflictException, NotFoundException
-from app.core.security import hash_password
+from app.core.security import hash_password_async
 from app.repositories.user_repository import UserRepository
 from app.schemas.common import PaginatedResponse
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.user import UserCreate, UserMeUpdate, UserResponse, UserUpdate
 
 
 class UserService:
@@ -19,18 +19,17 @@ class UserService:
         is_active: bool | None = None,
         search: str | None = None,
     ) -> PaginatedResponse[UserResponse]:
-        items, total, pages = await self._repository.list_users(
+        items, total = await self._repository.list_users(
             page=page,
             limit=limit,
             is_active=is_active,
             search=search,
         )
-        return PaginatedResponse[UserResponse](
+        return PaginatedResponse[UserResponse].create(
             items=[UserResponse.model_validate(item) for item in items],
             total=total,
             page=page,
             limit=limit,
-            pages=pages,
         )
 
     async def get_user(self, user_id: int) -> UserResponse:
@@ -46,9 +45,27 @@ class UserService:
                 f"User with email '{payload.email}' already exists"
             )
         data = payload.model_dump(exclude={"password"})
-        data["hashed_password"] = hash_password(payload.password)
+        data["hashed_password"] = await hash_password_async(payload.password)
         user = await self._repository.create(data)
         return UserResponse.model_validate(user)
+
+    async def update_my_profile(
+        self,
+        user_id: int,
+        payload: UserMeUpdate,
+    ) -> UserResponse:
+        user = await self._repository.get_by_id(user_id)
+        if user is None:
+            raise NotFoundException(f"User with id={user_id} not found")
+        update_data = payload.model_dump(exclude_unset=True)
+        if "email" in update_data and update_data["email"] != user.email:
+            conflict = await self._repository.get_by_email(update_data["email"])
+            if conflict is not None:
+                raise ConflictException(
+                    f"User with email '{update_data['email']}' already exists"
+                )
+        updated = await self._repository.update(user, update_data)
+        return UserResponse.model_validate(updated)
 
     async def update_user(self, user_id: int, payload: UserUpdate) -> UserResponse:
         user = await self._repository.get_by_id(user_id)

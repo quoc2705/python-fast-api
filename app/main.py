@@ -6,23 +6,49 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-import app.models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
+from app import models as _models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
 from app.api.v1.router import api_router
 from app.core.cache import cache_manager
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
-from app.core.middleware import RequestContextMiddleware
-from app.db.session import engine, init_db
+from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
+from app.db.session import engine
 
 WEB_INDEX_PATH = Path(__file__).resolve().parent / "web" / "index.html"
+
+OPENAPI_TAGS = [
+    {
+        "name": "Authentication",
+        "description": "JWT registration, login, atomic token rotation, and logout revocation.",
+    },
+    {
+        "name": "Users",
+        "description": "User profile management (`/me`), password changes, and ADMIN directory administration.",
+    },
+    {
+        "name": "Workspaces",
+        "description": "Workspace management and role-based member administration (`OWNER`/`EDITOR`/`VIEWER`).",
+    },
+    {
+        "name": "Projects",
+        "description": "Project lifecycle, project labels, and Redis-cached project task listings.",
+    },
+    {
+        "name": "Tasks",
+        "description": "Task CRUD, status transitions, label attachments, comments, and background notifications.",
+    },
+    {
+        "name": "Health",
+        "description": "Service liveness and readiness probes.",
+    },
+]
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan context manager managing DB and Redis cache lifecycle."""
+    """Application lifespan context manager managing DB and Redis cache lifecycle (schema managed via Alembic)."""
     setup_logging(debug=settings.DEBUG)
-    await init_db()
     await cache_manager.connect()
     yield
     await cache_manager.close()
@@ -39,9 +65,11 @@ def create_app() -> FastAPI:
             "Layered Architecture, SQLAlchemy 2.x Async, JWT Auth, RBAC, Redis Cache, "
             "Background Tasks, and Alembic Migrations"
         ),
+        openapi_tags=OPENAPI_TAGS,
         lifespan=lifespan,
     )
 
+    application.add_middleware(SecurityHeadersMiddleware)
     application.add_middleware(RequestContextMiddleware)
     application.add_middleware(
         CORSMiddleware,

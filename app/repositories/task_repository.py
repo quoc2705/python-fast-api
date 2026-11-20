@@ -2,6 +2,7 @@ from sqlalchemy import ColumnElement, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.models.comment import Comment
 from app.models.enums import TaskPriority, TaskStatus
 from app.models.label import TaskLabel
 from app.models.task import Task
@@ -20,7 +21,7 @@ class TaskRepository(BaseRepository[Task]):
             .where(Task.id == task_id)
             .options(
                 selectinload(Task.labels),
-                selectinload(Task.comments),
+                selectinload(Task.comments).selectinload(Comment.author),
             )
         )
         result = await self.session.execute(stmt)
@@ -36,7 +37,7 @@ class TaskRepository(BaseRepository[Task]):
         priority: TaskPriority | None = None,
         assignee_id: int | None = None,
         search: str | None = None,
-    ) -> tuple[list[Task], int, int]:
+    ) -> tuple[list[Task], int]:
         filters: list[ColumnElement[bool]] = []
         if project_id is not None:
             filters.append(Task.project_id == project_id)
@@ -56,7 +57,13 @@ class TaskRepository(BaseRepository[Task]):
             )
         return await self.get_multi_paginated(page=page, limit=limit, filters=filters)
 
-    async def attach_label(self, task_id: int, label_id: int) -> None:
+    async def attach_label(
+        self,
+        task_id: int,
+        label_id: int,
+        *,
+        commit: bool = True,
+    ) -> None:
         stmt = select(TaskLabel).where(
             TaskLabel.task_id == task_id,
             TaskLabel.label_id == label_id,
@@ -65,9 +72,17 @@ class TaskRepository(BaseRepository[Task]):
         existing = result.scalar_one_or_none()
         if existing is None:
             self.session.add(TaskLabel(task_id=task_id, label_id=label_id))
-            await self.session.commit()
+            await self._flush_or_conflict()
+            if commit:
+                await self.commit()
 
-    async def detach_label(self, task_id: int, label_id: int) -> bool:
+    async def detach_label(
+        self,
+        task_id: int,
+        label_id: int,
+        *,
+        commit: bool = True,
+    ) -> bool:
         stmt = select(TaskLabel).where(
             TaskLabel.task_id == task_id,
             TaskLabel.label_id == label_id,
@@ -77,5 +92,7 @@ class TaskRepository(BaseRepository[Task]):
         if existing is None:
             return False
         await self.session.delete(existing)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()
         return True
