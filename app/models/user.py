@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum as SqlEnum, String
+from sqlalchemy import Boolean, String
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAtMixin
@@ -27,7 +28,12 @@ class User(Base, CreatedAtMixin):
     full_name: Mapped[str] = mapped_column(String(150), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRole] = mapped_column(
-        SqlEnum(UserRole, name="user_role", native_enum=False),
+        SqlEnum(
+            UserRole,
+            name="user_role",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=UserRole.MEMBER,
         server_default=UserRole.MEMBER.value,
         nullable=False,
@@ -43,29 +49,27 @@ class User(Base, CreatedAtMixin):
         "Workspace",
         back_populates="owner",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )
     workspace_memberships: Mapped[list["WorkspaceMember"]] = relationship(
         "WorkspaceMember",
         back_populates="user",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )
     assigned_tasks: Mapped[list["Task"]] = relationship(
         "Task",
         back_populates="assignee",
         foreign_keys="Task.assignee_id",
-        lazy="selectin",
     )
     created_tasks: Mapped[list["Task"]] = relationship(
         "Task",
         back_populates="creator",
         foreign_keys="Task.created_by",
-        lazy="selectin",
     )
     comments: Mapped[list["Comment"]] = relationship(
         "Comment",
         back_populates="author",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )

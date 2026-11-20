@@ -42,12 +42,9 @@ class Label(Base):
     project: Mapped["Project"] = relationship(
         "Project",
         back_populates="labels",
-        lazy="selectin",
     )
     tasks: Mapped[list["Task"]] = relationship(
         "Task",
         secondary="task_labels",
         back_populates="labels",
-        lazy="selectin",
     )
-

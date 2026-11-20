@@ -1,14 +1,14 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     """Global user role in TaskHub."""
 
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"
 
 
-class WorkspaceRole(str, Enum):
+class WorkspaceRole(StrEnum):
     """Role of a user inside a specific workspace."""
 
     OWNER = "OWNER"
@@ -16,14 +16,14 @@ class WorkspaceRole(str, Enum):
     VIEWER = "VIEWER"
 
 
-class ProjectStatus(str, Enum):
+class ProjectStatus(StrEnum):
     """Lifecycle status of a project."""
 
     ACTIVE = "ACTIVE"
     ARCHIVED = "ARCHIVED"
 
 
-class TaskStatus(str, Enum):
+class TaskStatus(StrEnum):
     """Workflow status of a task."""
 
     TODO = "TODO"
@@ -32,11 +32,10 @@ class TaskStatus(str, Enum):
     DONE = "DONE"
 
 
-class TaskPriority(str, Enum):
+class TaskPriority(StrEnum):
     """Priority level of a task."""
 
     LOW = "LOW"
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     URGENT = "URGENT"
-

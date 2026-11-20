@@ -4,6 +4,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.enums import ProjectStatus
 from app.models.project import Project
+from app.models.task import Task
 from app.repositories.base import BaseRepository
 
 
@@ -18,7 +19,7 @@ class ProjectRepository(BaseRepository[Project]):
             select(Project)
             .where(Project.id == project_id)
             .options(
-                selectinload(Project.tasks),
+                selectinload(Project.tasks).selectinload(Task.labels),
                 selectinload(Project.labels),
             )
         )
@@ -33,7 +34,7 @@ class ProjectRepository(BaseRepository[Project]):
         workspace_id: int | None = None,
         status: ProjectStatus | None = None,
         search: str | None = None,
-    ) -> tuple[list[Project], int, int]:
+    ) -> tuple[list[Project], int]:
         filters: list[ColumnElement[bool]] = []
         if workspace_id is not None:
             filters.append(Project.workspace_id == workspace_id)

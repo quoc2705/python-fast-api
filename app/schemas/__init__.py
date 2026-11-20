@@ -14,9 +14,17 @@ from app.schemas.auth import (
     RegisterRequest,
     TokenResponse,
 )
+from app.schemas.base import BaseSchema
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import MessageResponse, PaginatedResponse
-from app.schemas.error import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.schemas.error import (
+    AUTH_ERROR_RESPONSES,
+    COMMON_ERROR_RESPONSES,
+    RESOURCE_READ_RESPONSES,
+    RESOURCE_WRITE_RESPONSES,
+    ErrorResponse,
+    ProjectCacheStatsResponse,
+)
 from app.schemas.label import LabelCreate, LabelResponse, LabelUpdate
 from app.schemas.project import (
     ProjectCreate,
@@ -30,7 +38,7 @@ from app.schemas.task import (
     TaskResponse,
     TaskUpdate,
 )
-from app.schemas.user import UserCreate, UserResponse, UserUpdate
+from app.schemas.user import UserCreate, UserMeUpdate, UserResponse, UserUpdate
 from app.schemas.workspace import (
     WorkspaceCreate,
     WorkspaceDetailResponse,
@@ -42,6 +50,8 @@ from app.schemas.workspace import (
 )
 
 __all__ = [
+    "AUTH_ERROR_RESPONSES",
+    "BaseSchema",
     "COMMON_ERROR_RESPONSES",
     "ChangePasswordRequest",
     "CommentCreate",
@@ -54,11 +64,14 @@ __all__ = [
     "LogoutRequest",
     "MessageResponse",
     "PaginatedResponse",
+    "ProjectCacheStatsResponse",
     "ProjectCreate",
     "ProjectDetailResponse",
     "ProjectResponse",
     "ProjectStatus",
     "ProjectUpdate",
+    "RESOURCE_READ_RESPONSES",
+    "RESOURCE_WRITE_RESPONSES",
     "RefreshTokenRequest",
     "RegisterRequest",
     "TaskCreate",
@@ -69,6 +82,7 @@ __all__ = [
     "TaskUpdate",
     "TokenResponse",
     "UserCreate",
+    "UserMeUpdate",
     "UserResponse",
     "UserRole",
     "UserUpdate",

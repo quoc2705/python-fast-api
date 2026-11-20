@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi import BackgroundTasks
 
 from app.core.cache import cache_manager
@@ -12,6 +14,7 @@ from app.repositories.task_repository import TaskRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.comment import CommentCreate, CommentResponse
 from app.schemas.common import PaginatedResponse
+from app.schemas.error import ProjectCacheStatsResponse
 from app.schemas.task import (
     TaskCreate,
     TaskDetailResponse,
@@ -38,11 +41,59 @@ class TaskService:
         self._comment_repo = comment_repo
 
     @staticmethod
-    def _project_cache_prefix(project_id: int) -> str:
+    def project_cache_namespace(project_id: int) -> str:
+        return f"project:{project_id}:tasks"
+
+    @staticmethod
+    def project_cache_prefix(project_id: int) -> str:
         return f"project:{project_id}:tasks:"
 
-    async def _invalidate_project_tasks_cache(self, project_id: int) -> None:
-        await cache_manager.invalidate_prefix(self._project_cache_prefix(project_id))
+    @classmethod
+    def _build_cache_key(
+        cls,
+        project_id: int,
+        *,
+        page: int,
+        limit: int,
+        status_filter: TaskStatus | None,
+        priority_filter: TaskPriority | None,
+        assignee_id: int | None,
+    ) -> str:
+        raw_params = (
+            f"p={page}|l={limit}|"
+            f"s={status_filter.value if status_filter else ''}|"
+            f"pr={priority_filter.value if priority_filter else ''}|"
+            f"a={assignee_id or ''}"
+        )
+        digest = hashlib.sha256(raw_params.encode("utf-8")).hexdigest()[:16]
+        return f"{cls.project_cache_prefix(project_id)}{digest}"
+
+    async def _invalidate_project_tasks_cache(self, project_id: int) -> int:
+        return await cache_manager.invalidate_prefix(
+            self.project_cache_prefix(project_id),
+            namespace=self.project_cache_namespace(project_id),
+        )
+
+    async def flush_project_tasks_cache(self, project_id: int) -> int:
+        project = await self._project_repo.get_by_id(project_id)
+        if project is None:
+            raise NotFoundException(f"Project with id={project_id} not found")
+        return await self._invalidate_project_tasks_cache(project_id)
+
+    async def get_project_tasks_cache_stats(
+        self,
+        project_id: int,
+    ) -> ProjectCacheStatsResponse:
+        project = await self._project_repo.get_by_id(project_id)
+        if project is None:
+            raise NotFoundException(f"Project with id={project_id} not found")
+        namespace = self.project_cache_namespace(project_id)
+        stats = await cache_manager.get_namespace_stats(namespace)
+        return ProjectCacheStatsResponse(
+            project_id=project_id,
+            cache_prefix=self.project_cache_prefix(project_id),
+            **stats,
+        )
 
     async def _validate_users(
         self,
@@ -72,22 +123,27 @@ class TaskService:
         search: str | None = None,
     ) -> PaginatedResponse[TaskResponse]:
         cache_key: str | None = None
+        namespace: str | None = None
         if project_id is not None:
             project = await self._project_repo.get_by_id(project_id)
             if project is None:
                 raise NotFoundException(f"Project with id={project_id} not found")
-            cache_key = (
-                f"{self._project_cache_prefix(project_id)}"
-                f"p={page}:l={limit}:"
-                f"s={status_filter.value if status_filter else ''}:"
-                f"pr={priority_filter.value if priority_filter else ''}:"
-                f"a={assignee_id or ''}:q={search or ''}"
-            )
-            cached = await cache_manager.get_json(cache_key)
-            if cached is not None:
-                return PaginatedResponse[TaskResponse].model_validate(cached)
+            # Do not cache free-text search queries to prevent unbounded cache key cardinality
+            if not search:
+                namespace = self.project_cache_namespace(project_id)
+                cache_key = self._build_cache_key(
+                    project_id,
+                    page=page,
+                    limit=limit,
+                    status_filter=status_filter,
+                    priority_filter=priority_filter,
+                    assignee_id=assignee_id,
+                )
+                cached = await cache_manager.get_json(cache_key, namespace=namespace)
+                if cached is not None:
+                    return PaginatedResponse[TaskResponse].model_validate(cached)
 
-        items, total, pages = await self._task_repo.list_tasks(
+        items, total = await self._task_repo.list_tasks(
             page=page,
             limit=limit,
             project_id=project_id,
@@ -96,12 +152,11 @@ class TaskService:
             assignee_id=assignee_id,
             search=search,
         )
-        response = PaginatedResponse[TaskResponse](
+        response = PaginatedResponse[TaskResponse].create(
             items=[TaskResponse.model_validate(item) for item in items],
             total=total,
             page=page,
             limit=limit,
-            pages=pages,
         )
         if cache_key is not None:
             await cache_manager.set_json(cache_key, response.model_dump(mode="json"))
@@ -117,14 +172,18 @@ class TaskService:
         self,
         project_id: int,
         payload: TaskCreate,
+        *,
+        created_by: int,
         background_tasks: BackgroundTasks | None = None,
     ) -> TaskResponse:
         project = await self._project_repo.get_by_id(project_id)
         if project is None:
             raise NotFoundException(f"Project with id={project_id} not found")
-        assignee = await self._validate_users(payload.assignee_id, payload.created_by)
+        assignee = await self._validate_users(payload.assignee_id, created_by)
         data = payload.model_dump()
         data["project_id"] = project_id
+        data["status"] = TaskStatus.TODO
+        data["created_by"] = created_by
         task = await self._task_repo.create(data)
         await self._invalidate_project_tasks_cache(project_id)
 
@@ -228,18 +287,20 @@ class TaskService:
     async def add_comment(
         self,
         task_id: int,
+        *,
+        author_id: int,
         payload: CommentCreate,
     ) -> CommentResponse:
         task = await self._task_repo.get_by_id(task_id)
         if task is None:
             raise NotFoundException(f"Task with id={task_id} not found")
-        author = await self._user_repo.get_by_id(payload.author_id)
+        author = await self._user_repo.get_by_id(author_id)
         if author is None:
-            raise NotFoundException(f"Author User with id={payload.author_id} not found")
+            raise NotFoundException(f"Author User with id={author_id} not found")
         comment = await self._comment_repo.create(
             {
                 "task_id": task_id,
-                "author_id": payload.author_id,
+                "author_id": author_id,
                 "content": payload.content,
             }
         )

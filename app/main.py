@@ -6,25 +6,25 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
-import app.models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
+from app import models as _models  # noqa: F401 - register all 8 TaskHub ORM models on metadata
 from app.api.v1.router import api_router
 from app.core.cache import cache_manager
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import setup_logging
 from app.core.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
-from app.db.session import engine, init_db
+from app.db.session import engine
 
 WEB_INDEX_PATH = Path(__file__).resolve().parent / "web" / "index.html"
 
 OPENAPI_TAGS = [
     {
         "name": "Authentication",
-        "description": "JWT registration, login, token rotation, and logout revocation.",
+        "description": "JWT registration, login, atomic token rotation, and logout revocation.",
     },
     {
         "name": "Users",
-        "description": "User profile management (`/me`), password changes, and directory administration.",
+        "description": "User profile management (`/me`), password changes, and ADMIN directory administration.",
     },
     {
         "name": "Workspaces",
@@ -47,9 +47,8 @@ OPENAPI_TAGS = [
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Application lifespan context manager managing DB and Redis cache lifecycle."""
+    """Application lifespan context manager managing DB and Redis cache lifecycle (schema managed via Alembic)."""
     setup_logging(debug=settings.DEBUG)
-    await init_db()
     await cache_manager.connect()
     yield
     await cache_manager.close()

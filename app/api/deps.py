@@ -5,8 +5,13 @@ from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import DEFAULT_LIMIT, DEFAULT_PAGE, MAX_LIMIT
 from app.core.exceptions import ForbiddenException, UnauthorizedException
-from app.core.security import decode_jwt_token, is_token_revoked
+from app.core.security import (
+    decode_jwt_token,
+    get_user_password_changed_at,
+    is_token_revoked,
+)
 from app.db.session import get_db_session
 from app.models.enums import UserRole
 from app.models.user import User
@@ -35,8 +40,14 @@ bearer_scheme = HTTPBearer(
 class PaginationParams:
     """Reusable pagination query parameters dependency (page + limit)."""
 
-    page: int = Query(default=1, ge=1, description="Page number (1-indexed)")
-    limit: int = Query(default=10, ge=1, le=100, description="Items per page (max 100)")
+    page: Annotated[
+        int,
+        Query(ge=1, description="Page number (1-indexed)"),
+    ] = DEFAULT_PAGE
+    limit: Annotated[
+        int,
+        Query(ge=1, le=MAX_LIMIT, description=f"Items per page (max {MAX_LIMIT})"),
+    ] = DEFAULT_LIMIT
 
 
 def get_user_repository(session: DBSessionDep) -> UserRepository:
@@ -124,7 +135,17 @@ async def get_optional_current_user(
     jti = str(claims.get("jti", ""))
     if jti and await is_token_revoked(jti):
         raise UnauthorizedException("Access token has been revoked")
-    user_id = int(claims["sub"])
+
+    try:
+        user_id = int(claims["sub"])
+    except (KeyError, ValueError, TypeError) as exc:
+        raise UnauthorizedException("Invalid token subject") from exc
+
+    iat = int(claims.get("iat", 0))
+    pw_changed_at = await get_user_password_changed_at(user_id)
+    if pw_changed_at is not None and iat < pw_changed_at:
+        raise UnauthorizedException("Access token invalidated due to password change")
+
     return await auth_service.get_active_user_by_id(user_id)
 
 

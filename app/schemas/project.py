@@ -1,72 +1,70 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, model_validator
 
+from app.core.constants import (
+    DESCRIPTION_MAX_LENGTH,
+    PROJECT_NAME_MAX_LENGTH,
+    PROJECT_NAME_MIN_LENGTH,
+)
 from app.models.enums import ProjectStatus
+from app.schemas.base import BaseSchema, reject_explicit_nulls
 from app.schemas.label import LabelResponse
 from app.schemas.task import TaskResponse
 
 
-class ProjectBase(BaseModel):
-    """Shared properties for Project schemas."""
+class ProjectCreate(BaseSchema):
+    """Schema for creating a new project inside a workspace (status defaults to ACTIVE)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     name: str = Field(
         ...,
-        min_length=3,
-        max_length=200,
+        min_length=PROJECT_NAME_MIN_LENGTH,
+        max_length=PROJECT_NAME_MAX_LENGTH,
         description="Project name",
         examples=["TaskHub Core Backend"],
     )
     description: str | None = Field(
         default=None,
-        max_length=2000,
+        max_length=DESCRIPTION_MAX_LENGTH,
         description="Project description",
     )
-    status: ProjectStatus = Field(
-        default=ProjectStatus.ACTIVE,
-        description="Project status (ACTIVE/ARCHIVED)",
-    )
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) < 3:
-            raise ValueError("Project name must contain at least 3 non-whitespace characters")
-        return cleaned
 
 
-class ProjectCreate(ProjectBase):
-    """Schema for creating a new project inside a workspace."""
-
-
-class ProjectUpdate(BaseModel):
+class ProjectUpdate(BaseSchema):
     """Schema for updating an existing project (or archiving it)."""
 
-    name: str | None = Field(default=None, min_length=3, max_length=200)
-    description: str | None = Field(default=None, max_length=2000)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    name: str | None = Field(
+        default=None,
+        min_length=PROJECT_NAME_MIN_LENGTH,
+        max_length=PROJECT_NAME_MAX_LENGTH,
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=DESCRIPTION_MAX_LENGTH,
+    )
     status: ProjectStatus | None = None
 
-    @field_validator("name")
+    @model_validator(mode="before")
     @classmethod
-    def validate_optional_name(cls, value: str | None) -> str | None:
-        if value is not None:
-            cleaned = value.strip()
-            if len(cleaned) < 3:
-                raise ValueError(
-                    "Project name must contain at least 3 non-whitespace characters"
-                )
-            return cleaned
-        return value
+    def _reject_nulls(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("name", "status"))
 
 
-class ProjectResponse(ProjectBase):
+class ProjectResponse(BaseSchema):
     """Schema for returning a project in API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     id: int
     workspace_id: int
+    name: str
+    description: str | None = None
+    status: ProjectStatus
     created_at: datetime
 
 
