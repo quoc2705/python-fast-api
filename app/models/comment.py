@@ -31,11 +31,9 @@ class Comment(Base, CreatedAtMixin):
     task: Mapped["Task"] = relationship(
         "Task",
         back_populates="comments",
-        lazy="selectin",
     )
     author: Mapped["User"] = relationship(
         "User",
         back_populates="comments",
         lazy="selectin",
     )
-

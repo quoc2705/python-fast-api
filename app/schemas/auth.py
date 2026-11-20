@@ -1,54 +1,61 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator
 
-from app.models.enums import UserRole
-from app.schemas.user import UserResponse
+from app.core.constants import (
+    EMAIL_MAX_LENGTH,
+    PASSWORD_MAX_LENGTH,
+    PASSWORD_MIN_LENGTH,
+    USER_NAME_MAX_LENGTH,
+    USER_NAME_MIN_LENGTH,
+)
+from app.schemas.base import BaseSchema
+from app.schemas.user import UserResponse, validate_email_string
 
 
-class RegisterRequest(BaseModel):
-    """Schema for registering a new user account."""
+class RegisterRequest(BaseSchema):
+    """Schema for self-registering a new user account (role cannot be chosen by client)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     email: str = Field(
         ...,
-        max_length=255,
+        max_length=EMAIL_MAX_LENGTH,
         description="Unique email address",
         examples=["quoc@taskhub.io"],
     )
     full_name: str = Field(
         ...,
-        min_length=2,
-        max_length=150,
+        min_length=USER_NAME_MIN_LENGTH,
+        max_length=USER_NAME_MAX_LENGTH,
         description="Full name of the user",
         examples=["Dinh Ngoc Quoc"],
     )
     password: str = Field(
         ...,
-        min_length=6,
-        max_length=128,
-        description="Account password (min 6 characters)",
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+        description="Account password (6 to 72 characters)",
         examples=["Password123!"],
-    )
-    role: UserRole = Field(
-        default=UserRole.MEMBER,
-        description="System role (ADMIN or MEMBER)",
     )
 
     @field_validator("email")
     @classmethod
-    def validate_email(cls, value: str) -> str:
-        cleaned = value.strip().lower()
-        if "@" not in cleaned or "." not in cleaned.split("@")[-1]:
-            raise ValueError("Invalid email address format")
-        return cleaned
+    def _validate_email(cls, value: str) -> str:
+        return validate_email_string(value)
 
 
-class LoginRequest(BaseModel):
+class LoginRequest(BaseSchema):
     """Schema for user login returning JWT access and refresh tokens."""
 
     email: str = Field(..., examples=["quoc@taskhub.io"])
-    password: str = Field(..., examples=["Password123!"])
+    password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, value: str) -> str:
+        return validate_email_string(value)
 
 
-class TokenResponse(BaseModel):
+class TokenResponse(BaseSchema):
     """JWT token pair response."""
 
     access_token: str
@@ -57,20 +64,24 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
-class RefreshTokenRequest(BaseModel):
+class RefreshTokenRequest(BaseSchema):
     """Request payload to exchange a refresh token for a new token pair."""
 
-    refresh_token: str = Field(..., description="Valid JWT refresh token")
+    refresh_token: str = Field(..., min_length=10, description="Valid JWT refresh token")
 
 
-class LogoutRequest(BaseModel):
+class LogoutRequest(BaseSchema):
     """Request payload to revoke a refresh token upon logout."""
 
-    refresh_token: str = Field(..., description="Refresh token to revoke")
+    refresh_token: str = Field(..., min_length=10, description="Refresh token to revoke")
 
 
-class ChangePasswordRequest(BaseModel):
+class ChangePasswordRequest(BaseSchema):
     """Request payload for changing the current user's password."""
 
-    current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=6, max_length=128)
+    current_password: str = Field(..., min_length=1, max_length=PASSWORD_MAX_LENGTH)
+    new_password: str = Field(
+        ...,
+        min_length=PASSWORD_MIN_LENGTH,
+        max_length=PASSWORD_MAX_LENGTH,
+    )

@@ -1,44 +1,46 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, model_validator
 
+from app.core.constants import WORKSPACE_NAME_MAX_LENGTH, WORKSPACE_NAME_MIN_LENGTH
 from app.models.enums import WorkspaceRole
+from app.schemas.base import BaseSchema, reject_explicit_nulls
 from app.schemas.user import UserResponse
 
 
-class WorkspaceBase(BaseModel):
+class WorkspaceBase(BaseSchema):
     """Shared properties for Workspace schemas."""
 
     name: str = Field(
         ...,
-        min_length=2,
-        max_length=200,
+        min_length=WORKSPACE_NAME_MIN_LENGTH,
+        max_length=WORKSPACE_NAME_MAX_LENGTH,
         description="Workspace name",
         examples=["Engineering Workspace"],
     )
 
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) < 2:
-            raise ValueError("Workspace name must be at least 2 characters")
-        return cleaned
-
 
 class WorkspaceCreate(WorkspaceBase):
-    """Schema for creating a new workspace."""
-
-    owner_id: int = Field(..., ge=1, description="User ID of the workspace owner")
+    """Schema for creating a new workspace (owner is set from current authenticated user)."""
 
 
-class WorkspaceUpdate(BaseModel):
+class WorkspaceUpdate(BaseSchema):
     """Schema for updating a workspace."""
 
-    name: str | None = Field(default=None, min_length=2, max_length=200)
+    name: str | None = Field(
+        default=None,
+        min_length=WORKSPACE_NAME_MIN_LENGTH,
+        max_length=WORKSPACE_NAME_MAX_LENGTH,
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_nulls(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("name",))
 
 
-class WorkspaceMemberAdd(BaseModel):
+class WorkspaceMemberAdd(BaseSchema):
     """Schema for adding/updating a member in a workspace."""
 
     user_id: int = Field(..., ge=1, description="User ID to invite to the workspace")
@@ -48,10 +50,19 @@ class WorkspaceMemberAdd(BaseModel):
     )
 
 
-class WorkspaceMemberResponse(BaseModel):
+class WorkspaceMemberRoleUpdate(BaseSchema):
+    """Schema for updating an existing workspace member's role."""
+
+    role: WorkspaceRole = Field(
+        ...,
+        description="New workspace role (OWNER/EDITOR/VIEWER)",
+    )
+
+
+class WorkspaceMemberResponse(BaseSchema):
     """Schema for returning workspace membership details."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     workspace_id: int
     user_id: int
@@ -62,7 +73,7 @@ class WorkspaceMemberResponse(BaseModel):
 class WorkspaceResponse(WorkspaceBase):
     """Schema for returning a workspace in API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     id: int
     owner_id: int
@@ -74,4 +85,3 @@ class WorkspaceDetailResponse(WorkspaceResponse):
 
     owner: UserResponse | None = None
     members: list[WorkspaceMemberResponse] = Field(default_factory=list)
-

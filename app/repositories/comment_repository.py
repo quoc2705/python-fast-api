@@ -17,7 +17,6 @@ class CommentRepository(BaseRepository[Comment]):
         *,
         page: int = 1,
         limit: int = 50,
-    ) -> tuple[list[Comment], int, int]:
+    ) -> tuple[list[Comment], int]:
         filters: list[ColumnElement[bool]] = [Comment.task_id == task_id]
         return await self.get_multi_paginated(page=page, limit=limit, filters=filters)
-

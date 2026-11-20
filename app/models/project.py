@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum as SqlEnum, ForeignKey, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy import ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, CreatedAtMixin
@@ -26,7 +27,12 @@ class Project(Base, CreatedAtMixin):
     name: Mapped[str] = mapped_column(String(200), index=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ProjectStatus] = mapped_column(
-        SqlEnum(ProjectStatus, name="project_status", native_enum=False),
+        SqlEnum(
+            ProjectStatus,
+            name="project_status",
+            native_enum=False,
+            create_constraint=True,
+        ),
         default=ProjectStatus.ACTIVE,
         server_default=ProjectStatus.ACTIVE.value,
         index=True,
@@ -36,17 +42,16 @@ class Project(Base, CreatedAtMixin):
     workspace: Mapped["Workspace"] = relationship(
         "Workspace",
         back_populates="projects",
-        lazy="selectin",
     )
     tasks: Mapped[list["Task"]] = relationship(
         "Task",
         back_populates="project",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )
     labels: Mapped[list["Label"]] = relationship(
         "Label",
         back_populates="project",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
     )

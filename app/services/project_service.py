@@ -1,5 +1,5 @@
-from fastapi import HTTPException, status
-
+from app.core.cache import cache_manager
+from app.core.exceptions import NotFoundException
 from app.models.enums import ProjectStatus
 from app.repositories.label_repository import LabelRepository
 from app.repositories.project_repository import ProjectRepository
@@ -12,6 +12,7 @@ from app.schemas.project import (
     ProjectResponse,
     ProjectUpdate,
 )
+from app.services.task_service import TaskService
 
 
 class ProjectService:
@@ -36,28 +37,24 @@ class ProjectService:
         status_filter: ProjectStatus | None = None,
         search: str | None = None,
     ) -> PaginatedResponse[ProjectResponse]:
-        items, total, pages = await self._project_repo.list_projects(
+        items, total = await self._project_repo.list_projects(
             page=page,
             limit=limit,
             workspace_id=workspace_id,
             status=status_filter,
             search=search,
         )
-        return PaginatedResponse[ProjectResponse](
+        return PaginatedResponse[ProjectResponse].create(
             items=[ProjectResponse.model_validate(item) for item in items],
             total=total,
             page=page,
             limit=limit,
-            pages=pages,
         )
 
     async def get_project(self, project_id: int) -> ProjectDetailResponse:
         project = await self._project_repo.get_by_id_with_details(project_id)
         if project is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project with id={project_id} not found",
-            )
+            raise NotFoundException(f"Project with id={project_id} not found")
         return ProjectDetailResponse.model_validate(project)
 
     async def create_project(
@@ -67,12 +64,10 @@ class ProjectService:
     ) -> ProjectResponse:
         workspace = await self._workspace_repo.get_by_id(workspace_id)
         if workspace is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Workspace with id={workspace_id} not found",
-            )
+            raise NotFoundException(f"Workspace with id={workspace_id} not found")
         data = payload.model_dump()
         data["workspace_id"] = workspace_id
+        data["status"] = ProjectStatus.ACTIVE
         project = await self._project_repo.create(data)
         return ProjectResponse.model_validate(project)
 
@@ -83,10 +78,7 @@ class ProjectService:
     ) -> ProjectResponse:
         project = await self._project_repo.get_by_id(project_id)
         if project is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project with id={project_id} not found",
-            )
+            raise NotFoundException(f"Project with id={project_id} not found")
         updated = await self._project_repo.update(
             project,
             payload.model_dump(exclude_unset=True),
@@ -96,10 +88,7 @@ class ProjectService:
     async def archive_project(self, project_id: int) -> ProjectResponse:
         project = await self._project_repo.get_by_id(project_id)
         if project is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project with id={project_id} not found",
-            )
+            raise NotFoundException(f"Project with id={project_id} not found")
         updated = await self._project_repo.update(
             project,
             {"status": ProjectStatus.ARCHIVED},
@@ -109,11 +98,12 @@ class ProjectService:
     async def delete_project(self, project_id: int) -> None:
         project = await self._project_repo.get_by_id(project_id)
         if project is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project with id={project_id} not found",
-            )
+            raise NotFoundException(f"Project with id={project_id} not found")
         await self._project_repo.delete(project)
+        await cache_manager.invalidate_prefix(
+            TaskService.project_cache_prefix(project_id),
+            namespace=TaskService.project_cache_namespace(project_id),
+        )
 
     async def create_label(
         self,
@@ -122,41 +112,45 @@ class ProjectService:
     ) -> LabelResponse:
         project = await self._project_repo.get_by_id(project_id)
         if project is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Project with id={project_id} not found",
-            )
+            raise NotFoundException(f"Project with id={project_id} not found")
         data = payload.model_dump()
         data["project_id"] = project_id
         label = await self._label_repo.create(data)
         return LabelResponse.model_validate(label)
 
     async def list_labels(self, project_id: int) -> list[LabelResponse]:
-        items, _, _ = await self._label_repo.list_by_project(project_id)
+        items, _ = await self._label_repo.list_by_project(project_id)
         return [LabelResponse.model_validate(item) for item in items]
 
     async def update_label(
         self,
+        project_id: int,
         label_id: int,
         payload: LabelUpdate,
     ) -> LabelResponse:
         label = await self._label_repo.get_by_id(label_id)
-        if label is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Label with id={label_id} not found",
+        if label is None or label.project_id != project_id:
+            raise NotFoundException(
+                f"Label with id={label_id} not found in project {project_id}"
             )
         updated = await self._label_repo.update(
             label,
             payload.model_dump(exclude_unset=True),
         )
+        await cache_manager.invalidate_prefix(
+            TaskService.project_cache_prefix(project_id),
+            namespace=TaskService.project_cache_namespace(project_id),
+        )
         return LabelResponse.model_validate(updated)
 
-    async def delete_label(self, label_id: int) -> None:
+    async def delete_label(self, project_id: int, label_id: int) -> None:
         label = await self._label_repo.get_by_id(label_id)
-        if label is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Label with id={label_id} not found",
+        if label is None or label.project_id != project_id:
+            raise NotFoundException(
+                f"Label with id={label_id} not found in project {project_id}"
             )
         await self._label_repo.delete(label)
+        await cache_manager.invalidate_prefix(
+            TaskService.project_cache_prefix(project_id),
+            namespace=TaskService.project_cache_namespace(project_id),
+        )

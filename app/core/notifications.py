@@ -1,12 +1,14 @@
-from datetime import datetime, timezone
+from collections import deque
+from datetime import UTC, datetime
 from typing import Any
 
+from app.core.constants import OUTBOX_MAX_SIZE
 from app.core.logging import get_logger
 
 logger = get_logger("app.notifications")
 
-# In-memory notification log for inspection / testing via API & logs
-notification_outbox: list[dict[str, Any]] = []
+# Bounded ring-buffer notification outbox for inspection / testing
+notification_outbox: deque[dict[str, Any]] = deque(maxlen=OUTBOX_MAX_SIZE)
 
 
 def send_task_assigned_email_notification(
@@ -30,7 +32,7 @@ def send_task_assigned_email_notification(
         ),
         "task_id": task_id,
         "project_id": project_id,
-        "sent_at": datetime.now(timezone.utc).isoformat(),
+        "sent_at": datetime.now(UTC).isoformat(),
     }
     notification_outbox.append(record)
     logger.info(

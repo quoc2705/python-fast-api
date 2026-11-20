@@ -1,30 +1,35 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, model_validator
 
+from app.core.constants import (
+    DESCRIPTION_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    TITLE_MIN_LENGTH,
+)
 from app.models.enums import TaskPriority, TaskStatus
+from app.schemas.base import BaseSchema, reject_explicit_nulls
 from app.schemas.comment import CommentResponse
 from app.schemas.label import LabelResponse
 
 
-class TaskBase(BaseModel):
-    """Shared properties for TaskHub Task schemas."""
+class TaskCreate(BaseSchema):
+    """Schema for creating a new task inside a project (status defaults to TODO, created_by from auth user)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
 
     title: str = Field(
         ...,
-        min_length=3,
-        max_length=200,
+        min_length=TITLE_MIN_LENGTH,
+        max_length=TITLE_MAX_LENGTH,
         description="Short title of the task",
         examples=["Implement TaskHub SQLAlchemy 2.x Async Schema"],
     )
     description: str | None = Field(
         default=None,
-        max_length=2000,
+        max_length=DESCRIPTION_MAX_LENGTH,
         description="Detailed task description",
-    )
-    status: TaskStatus = Field(
-        default=TaskStatus.TODO,
-        description="Current workflow status (TODO/IN_PROGRESS/IN_REVIEW/DONE)",
     )
     priority: TaskPriority = Field(
         default=TaskPriority.MEDIUM,
@@ -39,53 +44,47 @@ class TaskBase(BaseModel):
         default=None,
         description="Optional due date for completing the task",
     )
-    created_by: int | None = Field(
+
+
+class TaskUpdate(BaseSchema):
+    """Schema for partially updating an existing task (non-nullable fields cannot be null)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    title: str | None = Field(
         default=None,
-        ge=1,
-        description="ID of the user who created the task",
+        min_length=TITLE_MIN_LENGTH,
+        max_length=TITLE_MAX_LENGTH,
     )
-
-    @field_validator("title")
-    @classmethod
-    def validate_title_not_blank(cls, value: str) -> str:
-        cleaned = value.strip()
-        if len(cleaned) < 3:
-            raise ValueError("Title must contain at least 3 non-whitespace characters")
-        return cleaned
-
-
-class TaskCreate(TaskBase):
-    """Schema for creating a new task inside a project."""
-
-
-class TaskUpdate(BaseModel):
-    """Schema for partially updating an existing task."""
-
-    title: str | None = Field(default=None, min_length=3, max_length=200)
-    description: str | None = Field(default=None, max_length=2000)
+    description: str | None = Field(
+        default=None,
+        max_length=DESCRIPTION_MAX_LENGTH,
+    )
     status: TaskStatus | None = None
     priority: TaskPriority | None = None
     assignee_id: int | None = Field(default=None, ge=1)
     due_date: datetime | None = None
 
-    @field_validator("title")
+    @model_validator(mode="before")
     @classmethod
-    def validate_optional_title(cls, value: str | None) -> str | None:
-        if value is not None:
-            cleaned = value.strip()
-            if len(cleaned) < 3:
-                raise ValueError("Title must contain at least 3 non-whitespace characters")
-            return cleaned
-        return value
+    def _reject_null_on_required_columns(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("title", "status", "priority"))
 
 
-class TaskResponse(TaskBase):
+class TaskResponse(BaseSchema):
     """Schema for returning a task in API responses."""
 
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, str_strip_whitespace=True)
 
     id: int
     project_id: int
+    title: str
+    description: str | None = None
+    status: TaskStatus
+    priority: TaskPriority
+    assignee_id: int | None = None
+    due_date: datetime | None = None
+    created_by: int | None = None
     created_at: datetime
     labels: list[LabelResponse] = Field(default_factory=list)
 

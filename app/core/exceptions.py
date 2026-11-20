@@ -1,8 +1,10 @@
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import get_logger
 
@@ -18,13 +20,13 @@ class AppException(Exception):
         *,
         status_code: int = status.HTTP_400_BAD_REQUEST,
         error_code: str = "APP_ERROR",
-        details: Any = None,
+        errors: list[Any] | dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
         self.error_code = error_code
-        self.details = details
+        self.errors = errors
 
 
 class NotFoundException(AppException):
@@ -99,15 +101,15 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "detail": exc.message,
                 "error_code": exc.error_code,
-                "details": exc.details,
+                "errors": exc.errors,
                 "request_id": request_id,
             },
         )
 
-    @app.exception_handler(HTTPException)
+    @app.exception_handler(StarletteHTTPException)
     async def handle_http_exception(
         request: Request,
-        exc: HTTPException,
+        exc: StarletteHTTPException,
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", None)
         return JSONResponse(
@@ -115,9 +117,10 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "detail": exc.detail,
                 "error_code": f"HTTP_{exc.status_code}",
+                "errors": None,
                 "request_id": request_id,
             },
-            headers=exc.headers,
+            headers=getattr(exc, "headers", None),
         )
 
     @app.exception_handler(RequestValidationError)
@@ -126,12 +129,36 @@ def register_exception_handlers(app: FastAPI) -> None:
         exc: RequestValidationError,
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", None)
+        sanitized_errors = [
+            {
+                "loc": list(err.get("loc", ())),
+                "msg": str(err.get("msg", "")),
+                "type": str(err.get("type", "")),
+            }
+            for err in exc.errors()
+        ]
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
                 "detail": "Validation error",
                 "error_code": "VALIDATION_ERROR",
-                "details": exc.errors(),
+                "errors": sanitized_errors,
+                "request_id": request_id,
+            },
+        )
+
+    @app.exception_handler(IntegrityError)
+    async def handle_integrity_error(
+        request: Request,
+        _exc: IntegrityError,
+    ) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", None)
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": "Database integrity constraint violated",
+                "error_code": "CONFLICT",
+                "errors": None,
                 "request_id": request_id,
             },
         )
@@ -139,7 +166,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def handle_unexpected_exception(
         request: Request,
-        exc: Exception,
+        _exc: Exception,
     ) -> JSONResponse:
         request_id = getattr(request.state, "request_id", None)
         logger.exception("Unhandled error on %s %s", request.method, request.url.path)
@@ -148,7 +175,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             content={
                 "detail": "Internal server error",
                 "error_code": "INTERNAL_SERVER_ERROR",
-                "message": str(exc),
+                "errors": None,
                 "request_id": request_id,
             },
         )

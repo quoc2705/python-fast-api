@@ -1,10 +1,11 @@
 from collections.abc import Sequence
-from math import ceil
 from typing import Any, Generic, TypeVar
 
 from sqlalchemy import ColumnElement, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import ConflictException
 from app.db.base import Base
 
 ModelType = TypeVar("ModelType", bound=Base)
@@ -30,8 +31,8 @@ class BaseRepository(Generic[ModelType]):
         limit: int = 10,
         filters: Sequence[ColumnElement[bool]] | None = None,
         order_by: Any = None,
-    ) -> tuple[list[ModelType], int, int]:
-        """Fetch paginated records using (page, limit) and return (items, total, pages)."""
+    ) -> tuple[list[ModelType], int]:
+        """Fetch paginated records using (page, limit) and return (items, total)."""
         stmt = select(self.model)
         count_stmt = select(func.count()).select_from(self.model)
 
@@ -47,34 +48,74 @@ class BaseRepository(Generic[ModelType]):
 
         total_result = await self.session.execute(count_stmt)
         total = int(total_result.scalar_one() or 0)
-        pages = ceil(total / limit) if total > 0 else 0
 
         offset = (page - 1) * limit
         stmt = stmt.offset(offset).limit(limit)
         result = await self.session.execute(stmt)
         items = list(result.scalars().all())
 
-        return items, total, pages
+        return items, total
 
-    async def create(self, obj_in: dict[str, Any]) -> ModelType:
-        """Create and persist a new model instance."""
+    async def _flush_or_conflict(self) -> None:
+        try:
+            await self.session.flush()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictException(
+                "Database integrity constraint violated"
+            ) from exc
+
+    async def commit(self) -> None:
+        """Commit the current unit-of-work transaction."""
+        try:
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictException(
+                "Database integrity constraint violated"
+            ) from exc
+
+    async def create(
+        self,
+        obj_in: dict[str, Any],
+        *,
+        commit: bool = True,
+    ) -> ModelType:
+        """Create and flush a new model instance (commits by default unless part of larger UoW)."""
         db_obj = self.model(**obj_in)
         self.session.add(db_obj)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()
         await self.session.refresh(db_obj)
         return db_obj
 
-    async def update(self, db_obj: ModelType, obj_in: dict[str, Any]) -> ModelType:
+    async def update(
+        self,
+        db_obj: ModelType,
+        obj_in: dict[str, Any],
+        *,
+        commit: bool = True,
+    ) -> ModelType:
         """Update an existing model instance with partial or full dictionary data."""
         for field, value in obj_in.items():
             if hasattr(db_obj, field):
                 setattr(db_obj, field, value)
         self.session.add(db_obj)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()
         await self.session.refresh(db_obj)
         return db_obj
 
-    async def delete(self, db_obj: ModelType) -> None:
+    async def delete(
+        self,
+        db_obj: ModelType,
+        *,
+        commit: bool = True,
+    ) -> None:
         """Delete an existing model instance."""
         await self.session.delete(db_obj)
-        await self.session.commit()
+        await self._flush_or_conflict()
+        if commit:
+            await self.commit()

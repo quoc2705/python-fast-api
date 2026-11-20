@@ -11,6 +11,7 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.schemas.common import MessageResponse
+from app.schemas.error import ErrorResponse
 from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -24,7 +25,7 @@ AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user account and issue JWT access + refresh tokens",
     responses={
-        409: {"description": "Email is already registered"},
+        409: {"model": ErrorResponse, "description": "Email is already registered"},
     },
 )
 async def register(
@@ -39,8 +40,8 @@ async def register(
     response_model=TokenResponse,
     summary="Authenticate user credentials and return JWT access + refresh tokens",
     responses={
-        401: {"description": "Invalid email or password"},
-        403: {"description": "User account is deactivated"},
+        401: {"model": ErrorResponse, "description": "Invalid email or password"},
+        403: {"model": ErrorResponse, "description": "User account is deactivated"},
     },
 )
 async def login(
@@ -53,9 +54,12 @@ async def login(
 @router.post(
     "/refresh",
     response_model=TokenResponse,
-    summary="Rotate refresh token and issue a new JWT access + refresh token pair",
+    summary="Atomically rotate refresh token and issue a new JWT token pair",
     responses={
-        401: {"description": "Invalid, expired, or revoked refresh token"},
+        401: {
+            "model": ErrorResponse,
+            "description": "Invalid, expired, or revoked refresh token",
+        },
     },
 )
 async def refresh_token(
@@ -70,7 +74,7 @@ async def refresh_token(
     response_model=MessageResponse,
     summary="Revoke a refresh token to log out the user",
     responses={
-        401: {"description": "Invalid refresh token"},
+        401: {"model": ErrorResponse, "description": "Invalid refresh token"},
     },
 )
 async def logout(
